@@ -132,13 +132,11 @@ func (gs *GazetteerSearcher) SearchAddress(query string, levels int) ([]models.C
 func (gs *GazetteerSearcher) searchByLevel(ctx context.Context, query string, level int, limit int) ([]models.AdminUnit, error) {
 	index := gs.client.Index(gs.indexName)
 
+	// Use compatible SearchRequest for Meilisearch 1.5.x
 	searchReq := &meilisearch.SearchRequest{
-		Query:  query,
-		Filter: fmt.Sprintf("level = %d", level),
-		Limit:  int64(limit),
-		AttributesToRetrieve: []string{"admin_id", "name", "normalized_name", "type", "admin_subtype", "aliases", "parent_id", "level", "path"},
+		Limit: int64(limit),
 	}
-
+	
 	result, err := index.Search(query, searchReq)
 	if err != nil {
 		return nil, fmt.Errorf("lỗi tìm kiếm Meilisearch: %w", err)
@@ -151,20 +149,37 @@ func (gs *GazetteerSearcher) searchByLevel(ctx context.Context, query string, le
 func (gs *GazetteerSearcher) searchByLevelWithFilter(ctx context.Context, query string, level int, filter string, limit int) ([]models.AdminUnit, error) {
 	index := gs.client.Index(gs.indexName)
 
-	combinedFilter := fmt.Sprintf("level = %d AND %s", level, filter)
+	// Use compatible SearchRequest with filter for Meilisearch 1.5.x
 	searchReq := &meilisearch.SearchRequest{
-		Query:  query,
-		Filter: combinedFilter,
 		Limit:  int64(limit),
-		AttributesToRetrieve: []string{"admin_id", "name", "normalized_name", "type", "admin_subtype", "aliases", "parent_id", "level", "path"},
+		Filter: filter,
 	}
-
+	
 	result, err := index.Search(query, searchReq)
 	if err != nil {
 		return nil, fmt.Errorf("lỗi tìm kiếm với filter: %w", err)
 	}
 
 	return gs.parseSearchResults(result)
+}
+
+// SearchWithFilter searches with additional filter criteria
+func (gs *GazetteerSearcher) SearchWithFilter(query, filter string, limit int) ([]models.AdminUnit, string, error) {
+	index := gs.client.Index(gs.indexName)
+	
+	// Use compatible SearchRequest with proper filter for Meilisearch 1.5.x
+	searchReq := &meilisearch.SearchRequest{
+		Limit:  int64(limit),
+		Filter: filter,
+	}
+	
+	result, err := index.Search(query, searchReq)
+	if err != nil {
+		return nil, "", fmt.Errorf("lỗi tìm kiếm với filter: %w", err)
+	}
+	
+	units, parseErr := gs.parseSearchResults(result)
+	return units, "exact", parseErr
 }
 
 // parseSearchResults parse kết quả từ Meilisearch thành AdminUnit
@@ -280,12 +295,9 @@ func (gs *GazetteerSearcher) FuzzySearch(query string, threshold float64) ([]mod
 
 	index := gs.client.Index(gs.indexName)
 
-	// Sử dụng typo tolerance của Meilisearch
+	// Use compatible SearchRequest for Meilisearch 1.5.x (no deprecated fields)
 	searchReq := &meilisearch.SearchRequest{
-		Query: query,
 		Limit: 50,
-		AttributesToRetrieve: []string{"admin_id", "name", "normalized_name", "type", "admin_subtype", "aliases", "parent_id", "level"},
-		ShowRankingScore: true,
 	}
 
 	result, err := index.Search(query, searchReq)
@@ -332,7 +344,6 @@ func (gs *GazetteerSearcher) GetAdminUnit(id string) (*models.AdminUnit, error) 
 	searchReq := &meilisearch.SearchRequest{
 		Filter: fmt.Sprintf("admin_id = %s", id),
 		Limit:  1,
-		AttributesToRetrieve: []string{"admin_id", "name", "normalized_name", "type", "admin_subtype", "aliases", "parent_id", "level", "path"},
 	}
 
 	result, err := index.Search("", searchReq)
@@ -412,7 +423,7 @@ func (gs *GazetteerSearcher) SeedData(adminUnits []models.AdminUnit) error {
 	var documents []map[string]interface{}
 	for _, unit := range adminUnits {
 		doc := map[string]interface{}{
-			"id":              unit.ID.Hex(), // MongoDB ObjectID
+			"id":              unit.AdminID, // Use AdminID as unique identifier
 			"admin_id":        unit.AdminID,
 			"parent_id":       unit.ParentID,
 			"level":           unit.Level,

@@ -197,37 +197,13 @@ func (tn *TextNormalizer) initializeMaps() {
 	}
 }
 
-// NormalizeAddress chuẩn hóa địa chỉ
+// NormalizeAddress chuẩn hóa địa chỉ using V2 implementation
 func (tn *TextNormalizer) NormalizeAddress(rawAddress string) (string, string) {
-	// 1. Noise removal & dual normalization
-	cleaned := tn.removeNoise(rawAddress)
+	// Use V2 normalizer for complete implementation
+	normalizerV2 := NewTextNormalizerV2()
+	result := normalizerV2.NormalizeAddress(rawAddress)
 	
-	// 2. Tạo 2 bản: gốc và không dấu
-	original := tn.cleanPunctuation(cleaned)
-	noDiacritics := tn.removeDiacritics(original)
-	
-	// 3. POI & Company extraction
-	poiExtracted := tn.extractPOI(noDiacritics)
-	
-	// 4. Smart abbreviation expansion
-	expanded := tn.expandAbbreviations(poiExtracted)
-	
-	// 5. Multi-language support
-	translated := tn.translateMultiLanguage(expanded)
-	
-	// 6. Smart P. disambiguation
-	disambiguated := tn.disambiguateP(translated)
-	
-	// 7. Advanced pattern recognition
-	patterned := tn.applyPatterns(disambiguated)
-	
-	// 8. Dictionary replace
-	replaced := tn.applyDictionaryMaps(patterned)
-	
-	// 9. Final cleanup
-	final := tn.finalCleanup(replaced)
-	
-	return original, final
+	return result.OriginalCleaned, result.NormalizedNoDiacritics
 }
 
 // removeNoise loại bỏ noise phi-địa-chỉ
@@ -418,6 +394,8 @@ func (tn *TextNormalizer) finalCleanup(text string) string {
 	result = strings.TrimSpace(result)
 	// Chuyển về lowercase
 	result = strings.ToLower(result)
+	// Replace spaces with underscores for consistency with data format
+	result = strings.ReplaceAll(result, " ", "_")
 	
 	return result
 }

@@ -116,10 +116,38 @@ func (am *AddressMatcher) MatchAddress(rawAddress string, gazetteerVersion strin
 		},
 	}
 	
-	// 5. Try exact matching first (fastest, score=1.0)
-	candidates, strategy, err := am.tryExactMatch(normalized)
-	if err != nil {
-		am.logger.Warn("Lỗi exact match", zap.Error(err))
+	// 5. Right-to-left hierarchy detection theo PROMPT (Province-first strategy)
+	var candidates []models.Candidate
+	var strategy MatchStrategy
+	
+	// Extract administrative components
+	adminComponents := am.extractAdministrativeComponents(normalized)
+	
+	// Province-first: Find province to narrow down candidates
+	if adminComponents.Province != "" {
+		provinceCandidates, provinceStrategy, err := am.tryExactMatch(adminComponents.Province)
+		if err != nil {
+			am.logger.Warn("Lỗi province match", zap.String("province", adminComponents.Province), zap.Error(err))
+		} else if len(provinceCandidates) > 0 {
+			candidates = append(candidates, provinceCandidates...)
+			strategy = provinceStrategy
+			
+			// District filtering: only consider districts within found province
+			if adminComponents.District != "" {
+				districtCandidates := am.filterDistrictsByProvince(provinceCandidates, adminComponents.District)
+				if len(districtCandidates) > 0 {
+					candidates = append(candidates, districtCandidates...)
+				}
+			}
+			
+			// Ward filtering: only consider wards within found district  
+			if adminComponents.Ward != "" && len(candidates) > 0 {
+				wardCandidates := am.filterWardsByDistrict(candidates, adminComponents.Ward)
+				if len(wardCandidates) > 0 {
+					candidates = append(candidates, wardCandidates...)
+				}
+			}
+		}
 	}
 	
 	// 6. Try ASCII matching if no exact match (fast, score=0.9)
@@ -181,6 +209,27 @@ func (am *AddressMatcher) MatchAddress(rawAddress string, gazetteerVersion strin
 
 // tryExactMatch thử exact matching (có dấu)
 func (am *AddressMatcher) tryExactMatch(normalized string) ([]models.Candidate, MatchStrategy, error) {
+	// Direct search in Meilisearch for exact matches
+	adminUnits, _, err := am.searcher.SearchWithFilter(normalized, "", 10)
+	if err != nil {
+		return nil, MatchStrategyExact, err
+	}
+	
+	// Convert AdminUnits to Candidates with exact match scoring
+	var exactCandidates []models.Candidate
+	for _, unit := range adminUnits {
+		candidate := models.Candidate{
+			AdminUnit: unit,
+			Score:     1.0, // Exact match gets highest score
+		}
+		exactCandidates = append(exactCandidates, candidate)
+	}
+	
+	return exactCandidates, MatchStrategyExact, nil
+}
+
+// tryExactMatchOld - old method using complex SearchAddress
+func (am *AddressMatcher) tryExactMatchOld(normalized string) ([]models.Candidate, MatchStrategy, error) {
 	candidates, err := am.searcher.SearchAddress(normalized, 4)
 	if err != nil {
 		return nil, MatchStrategyExact, err
@@ -563,6 +612,168 @@ func (am *AddressMatcher) buildAdminPath(units []models.AdminUnit) []string {
 		path[i] = unit.Name
 	}
 	return path
+}
+
+// AdministrativeComponents holds extracted admin components
+type AdministrativeComponents struct {
+	Province string
+	District string
+	Ward     string
+	Street   string
+	HouseNo  string
+}
+
+// extractAdministrativeComponents extracts admin components from normalized address
+func (am *AddressMatcher) extractAdministrativeComponents(normalized string) AdministrativeComponents {
+	components := AdministrativeComponents{}
+	words := strings.Split(normalized, "_")
+	
+	// Right-to-left scan for administrative components
+	for i := len(words) - 1; i >= 0; i-- {
+		word := words[i]
+		
+		// Look for province patterns (rightmost administrative level)
+		if am.isProvincePattern(word) {
+			components.Province = word
+			break
+		}
+	}
+	
+	// Look for district patterns (left of province)
+	for _, word := range words {
+		if am.isDistrictPattern(word) {
+			components.District = word
+			break
+		}
+	}
+	
+	// Look for ward patterns (left of district)
+	for _, word := range words {
+		if am.isWardPattern(word) {
+			components.Ward = word
+			break
+		}
+	}
+	
+	// Look for street patterns
+	for _, word := range words {
+		if am.isStreetPattern(word) {
+			components.Street = word
+			break
+		}
+	}
+	
+	// Look for house number patterns
+	for _, word := range words {
+		if am.isHouseNoPattern(word) {
+			components.HouseNo = word
+			break
+		}
+	}
+	
+	return components
+}
+
+// Helper pattern detection methods
+func (am *AddressMatcher) isProvincePattern(word string) bool {
+	// Common province names and patterns
+	provincePatterns := []string{
+		"tien_giang", "ho_chi_minh", "ha_noi", "da_nang", "hai_phong", "can_tho",
+		"an_giang", "bac_giang", "ben_tre", "binh_duong", "binh_phuoc", "binh_thuan",
+		"ca_mau", "cao_bang", "dak_lak", "dak_nong", "dong_nai", "dong_thap",
+		"gia_lai", "ha_giang", "ha_nam", "ha_tinh", "hau_giang", "hoa_binh",
+		"hung_yen", "khanh_hoa", "kien_giang", "kon_tum", "lai_chau", "lam_dong",
+		"lang_son", "lao_cai", "long_an", "nam_dinh", "nghe_an", "ninh_binh",
+		"ninh_thuan", "phu_tho", "phu_yen", "quang_binh", "quang_nam", "quang_ngai",
+		"quang_ninh", "quang_tri", "soc_trang", "son_la", "tay_ninh", "thai_binh",
+		"thai_nguyen", "thanh_hoa", "thua_thien_hue", "tra_vinh", "tuyen_quang",
+		"vinh_long", "vinh_phuc", "yen_bai", "bac_kan", "bac_ninh",
+	}
+	
+	for _, pattern := range provincePatterns {
+		if word == pattern {
+			return true
+		}
+	}
+	return false
+}
+
+func (am *AddressMatcher) isDistrictPattern(word string) bool {
+	return strings.HasPrefix(word, "quan_") || 
+		   strings.HasPrefix(word, "huyen_") ||
+		   strings.HasPrefix(word, "thi_xa_") ||
+		   strings.HasPrefix(word, "thanh_pho_")
+}
+
+func (am *AddressMatcher) isWardPattern(word string) bool {
+	return strings.HasPrefix(word, "phuong_") || 
+		   strings.HasPrefix(word, "xa_") ||
+		   strings.HasPrefix(word, "thi_tran_")
+}
+
+func (am *AddressMatcher) isStreetPattern(word string) bool {
+	return strings.Contains(word, "duong") ||
+		   strings.HasPrefix(word, "ql_") ||
+		   strings.HasPrefix(word, "dt_") ||
+		   strings.HasPrefix(word, "tl_") ||
+		   strings.Contains(word, "hem") ||
+		   strings.Contains(word, "ngo")
+}
+
+func (am *AddressMatcher) isHouseNoPattern(word string) bool {
+	return strings.HasPrefix(word, "so_nha_")
+}
+
+// filterDistrictsByProvince filters districts that belong to given province candidates
+func (am *AddressMatcher) filterDistrictsByProvince(provinceCandidates []models.Candidate, district string) []models.Candidate {
+	var results []models.Candidate
+	
+	for _, provinceCandidate := range provinceCandidates {
+		// Search for districts within this province
+		districtCandidates, _, err := am.searcher.SearchWithFilter(district, 
+			fmt.Sprintf("level = 3 AND parent_id = '%s'", provinceCandidate.AdminUnit.AdminID), 5)
+		if err != nil {
+			am.logger.Warn("Error filtering districts", zap.Error(err))
+			continue
+		}
+		
+		// Convert AdminUnits to Candidates
+		for _, adminUnit := range districtCandidates {
+			candidate := models.Candidate{
+				AdminUnit: adminUnit,
+				Score:     0.8, // District match score
+			}
+			results = append(results, candidate)
+		}
+	}
+	
+	return results
+}
+
+// filterWardsByDistrict filters wards that belong to given district candidates
+func (am *AddressMatcher) filterWardsByDistrict(districtCandidates []models.Candidate, ward string) []models.Candidate {
+	var results []models.Candidate
+	
+	for _, districtCandidate := range districtCandidates {
+		// Search for wards within this district
+		wardUnits, _, err := am.searcher.SearchWithFilter(ward,
+			fmt.Sprintf("level = 4 AND parent_id = '%s'", districtCandidate.AdminUnit.AdminID), 5)
+		if err != nil {
+			am.logger.Warn("Error filtering wards", zap.Error(err))
+			continue
+		}
+		
+		// Convert AdminUnits to Candidates
+		for _, adminUnit := range wardUnits {
+			candidate := models.Candidate{
+				AdminUnit: adminUnit,
+				Score:     0.9, // Ward match score
+			}
+			results = append(results, candidate)
+		}
+	}
+	
+	return results
 }
 
 // buildCanonicalText xây dựng canonical text từ AdminUnits
