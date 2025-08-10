@@ -1,0 +1,145 @@
+# Meilisearch Configuration for Address Parser Service
+# ==================================================
+
+# Server Configuration
+[server]
+host = "0.0.0.0"
+port = 7700
+http_addr = "0.0.0.0:7700"
+
+# Environment
+env = "production"
+
+# Master Key (will be overridden by environment variable)
+master_key = "masterKey12345678901234567890123456789012"
+
+# Logging
+[logging]
+level = "INFO"
+target = "stdout"
+
+# Database
+[db]
+path = "/meili_data"
+max_size = "100GB"
+
+# HTTP Configuration
+[http]
+max_payload_size = "100MB"
+max_concurrent_connections = 1000
+keep_alive_timeout = "5s"
+read_timeout = "30s"
+write_timeout = "30s"
+
+# Search Configuration
+[search]
+max_total_hits = 1000
+max_values_per_facet = 100
+
+# Index Configuration
+[index]
+max_terms_per_attribute = 1000
+max_attributes_per_index = 1000
+max_attributes_per_facet = 100
+
+# Task Configuration
+[task]
+max_concurrent_tasks = 10
+max_batch_size = 1000
+max_batch_bytes = 1000000
+
+# Experimental Features
+[experimental]
+enable_metrics = false
+enable_analytics = false
+
+# Custom Settings for Vietnamese Address Parsing
+[experimental.vietnamese_address_parsing]
+enable_unicode_normalization = true
+enable_typo_tolerance = true
+enable_prefix_search = true
+enable_suffix_search = true
+enable_exact_match_boost = true
+
+# Typo Tolerance Settings
+[typo_tolerance]
+enabled = true
+min_word_size_for_one_typo = 4
+min_word_size_for_two_typos = 8
+disable_on_words = []
+disable_on_attributes = []
+
+# Ranking Rules for Address Search
+[ranking_rules]
+rules = [
+    "words",
+    "typo",
+    "proximity",
+    "attribute",
+    "sort",
+    "exactness"
+]
+
+# Searchable Attributes
+[searchable_attributes]
+attributes = [
+    "name",
+    "aliases",
+    "code",
+    "type",
+    "level"
+]
+
+# Filterable Attributes
+[filterable_attributes]
+attributes = [
+    "type",
+    "level",
+    "parent_code",
+    "code"
+]
+
+# Sortable Attributes
+[sortable_attributes]
+attributes = [
+    "name",
+    "code",
+    "level"
+]
+
+# Distinct Attribute
+distinct_attribute = "code"
+
+# Pagination
+[pagination]
+max_total_hits = 1000
+
+# Faceting
+[faceting]
+max_values_per_facet = 100
+
+# Performance Tuning
+[performance]
+max_concurrent_connections = 1000
+max_concurrent_queries = 100
+max_concurrent_writes = 10
+max_concurrent_deletes = 10
+max_concurrent_updates = 10
+
+# Memory Management
+[memory]
+max_heap_size = "2GB"
+max_stack_size = "1MB"
+max_arena_size = "100MB"
+
+# Cache Configuration
+[cache]
+max_size = "100MB"
+ttl = "1h"
+
+# Backup Configuration
+[backup]
+enabled = true
+path = "/meili_data/backups"
+retention = "7d"
+compression = true

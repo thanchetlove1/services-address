@@ -1,0 +1,71 @@
+# Cấu hình ứng dụng Address Parser
+app:
+  name: "Address Parser VN"
+  version: "1.0.0"
+  environment: "development"
+  port: 8080
+  debug: true
+
+# Cấu hình hiệu năng
+performance:
+  # Worker pool configuration
+  cpu_workers: 8
+  io_workers: 32
+  batch_size: 64
+  max_qps_per_worker: 100
+  
+  # Cache configuration
+  l1_cache_size: 10000
+  cache_ttl_hours: 24
+  
+  # Processing thresholds
+  min_confidence: 0.6
+  confidence_high: 0.9
+  top_k_candidates: 5
+
+# Cấu hình Meilisearch
+meilisearch:
+  url: "http://localhost:7700"
+  master_key: "masterKey"
+  index_prefix: "address_"
+  max_inflight: 100
+  timeout_seconds: 30
+
+# Cấu hình MongoDB
+mongodb:
+  url: "mongodb://localhost:27017"
+  database: "address_parser"
+  collections:
+    admin_units: "admin_units"
+    address_cache: "address_cache"
+    address_review: "address_review"
+    learned_aliases: "learned_aliases"
+
+# Cấu hình Redis
+redis:
+  host: "localhost"
+  port: 6379
+  password: ""
+  database: 0
+  timeout: 5s
+  pool_size: 10
+  min_idle_conns: 5
+  max_retries: 3
+  ttl: 3600 # 1 giờ
+  key_prefix: "addr_parser:"
+
+# Cấu hình logging
+logging:
+  level: "info"
+  format: "json"
+  output: "stdout"
+  file_path: "storage/logs/app.log"
+  max_size_mb: 100
+  max_age_days: 7
+
+# Cấu hình monitoring
+monitoring:
+  prometheus_enabled: true
+  prometheus_port: 9090
+  tracing_enabled: true
+  health_check_interval: 30

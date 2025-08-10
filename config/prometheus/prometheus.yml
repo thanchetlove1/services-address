@@ -1,0 +1,153 @@
+# Prometheus Configuration for Address Parser Service
+# =================================================
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  scrape_timeout: 10s
+  external_labels:
+    cluster: 'address-parser'
+    environment: 'production'
+
+# Alerting rules
+rule_files:
+  - "rules/*.yml"
+
+# Alert manager configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          # - alertmanager:9093
+
+# Load rules once and periodically evaluate them
+rule_files:
+  - "rules/*.yml"
+
+# Scrape configurations
+scrape_configs:
+  # Prometheus itself
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+    scrape_interval: 15s
+    metrics_path: '/metrics'
+
+  # Address Parser Service
+  - job_name: 'address-parser'
+    static_configs:
+      - targets: ['address-parser:8080']
+    scrape_interval: 10s
+    metrics_path: '/metrics'
+    scrape_timeout: 5s
+    honor_labels: true
+    metrics_path: '/metrics'
+    scheme: 'http'
+    tls_config:
+      insecure_skip_verify: true
+
+  # Meilisearch
+  - job_name: 'meilisearch'
+    static_configs:
+      - targets: ['meilisearch:7700']
+    scrape_interval: 15s
+    metrics_path: '/metrics'
+    scrape_timeout: 10s
+    honor_labels: true
+    scheme: 'http'
+
+  # MongoDB (if using mongodb_exporter)
+  - job_name: 'mongodb'
+    static_configs:
+      - targets: ['mongodb:27017']
+    scrape_interval: 30s
+    metrics_path: '/metrics'
+    scrape_timeout: 10s
+    honor_labels: true
+    scheme: 'http'
+
+  # Redis (if using redis_exporter)
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis:6379']
+    scrape_interval: 15s
+    metrics_path: '/metrics'
+    scrape_timeout: 5s
+    honor_labels: true
+    scheme: 'http'
+
+  # Node Exporter (system metrics)
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['node-exporter:9100']
+    scrape_interval: 15s
+    metrics_path: '/metrics'
+    scrape_timeout: 10s
+    honor_labels: true
+    scheme: 'http'
+
+  # Docker daemon metrics
+  - job_name: 'docker'
+    static_configs:
+      - targets: ['docker:9323']
+    scrape_interval: 15s
+    metrics_path: '/metrics'
+    scrape_timeout: 10s
+    honor_labels: true
+    scheme: 'http'
+
+  # Cadvisor (container metrics)
+  - job_name: 'cadvisor'
+    static_configs:
+      - targets: ['cadvisor:8080']
+    scrape_interval: 15s
+    metrics_path: '/metrics'
+    scrape_timeout: 10s
+    honor_labels: true
+    scheme: 'http'
+
+# Storage configuration
+storage:
+  tsdb:
+    path: '/prometheus'
+    retention:
+      time: 15d
+      size: 10GB
+    min_block_duration: 2h
+    max_block_duration: 24h
+
+# Remote write configuration (optional)
+remote_write:
+  - url: "http://remote-write-endpoint:9201/write"
+    remote_timeout: 30s
+    write_relabel_configs:
+      - source_labels: [__name__]
+        regex: 'up'
+        action: keep
+
+# Remote read configuration (optional)
+remote_read:
+  - url: "http://remote-read-endpoint:9201/read"
+    remote_timeout: 30s
+    read_recent: true
+
+# Web configuration
+web:
+  listen_address: '0.0.0.0:9090'
+  read_timeout: 5m
+  max_connections: 512
+  external_url: 'http://localhost:9090'
+  route_prefix: '/'
+  enable_lifecycle: true
+  enable_admin_api: true
+  enable_remote_write_receiver: false
+  page_title: 'Address Parser Prometheus'
+  cors_origins:
+    - 'http://localhost:3000'
+    - 'http://grafana:3000'
+
+# Logging configuration
+log:
+  level: info
+  format: json
+  output: stdout

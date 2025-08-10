@@ -1,0 +1,156 @@
+version: '3.8'
+
+services:
+  # Address Parser Service (Golang)
+  app:
+    build: .
+    container_name: address_parser_service
+    ports:
+      - "8083:8080"
+    environment:
+      - APP_ENV=production
+      - APP_PORT=8080
+      - MEILI_URL=http://meili:7700
+      - MEILI_MASTER_KEY=${MEILI_MASTER_KEY:-5pAVWqmP046jvNzQwD70n8b5AdEyhW3lwWUZ1g5CZ8k}
+      - MONGO_URL=mongodb://mongo:27017/address_parser
+      - REDIS_URL=redis://redis:6379
+      - LOG_LEVEL=info
+      - BATCH_SIZE=64
+      - MAX_WORKERS=16
+      - MEILI_MAX_INFLIGHT=128
+      - MAX_QPS_PER_WORKER=50
+      - L1_CACHE_SIZE=10000
+    depends_on:
+      - meili
+      - mongo
+      - redis
+    restart: unless-stopped
+    networks:
+      - address_parser_net
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
+        reservations:
+          cpus: '1.0'
+          memory: 2G
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Meilisearch 1.5+ (Search Engine)
+  meili:
+    image: getmeili/meilisearch:v1.5
+    container_name: address_parser_meilisearch
+    ports:
+      - "7700:7700"
+    environment:
+      - MEILI_MASTER_KEY=${MEILI_MASTER_KEY:-5pAVWqmP046jvNzQwD70n8b5AdEyhW3lwWUZ1g5CZ8k}
+      - MEILI_ENV=production
+      - MEILI_HTTP_ADDR=0.0.0.0:7700
+      - MEILI_LOG_LEVEL=INFO
+      - MEILI_NO_ANALYTICS=true
+    volumes:
+      - ../docker/data/meilisearch:/meili_data
+    restart: unless-stopped
+    networks:
+      - address_parser_net
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:7700/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1.5G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # MongoDB 7.0+ (Database chính)
+  mongo:
+    image: mongo:7.0
+    container_name: address_parser_mongodb
+    ports:
+      - "27017:27017"
+    environment:
+      - MONGO_INITDB_DATABASE=address_parser
+    volumes:
+      - ../docker/data/mongodb:/data/db
+    restart: unless-stopped
+    networks:
+      - address_parser_net
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Redis 7.2+ (L1 Cache)
+  redis:
+    image: redis:7.2-alpine
+    container_name: address_parser_redis
+    ports:
+      - "6380:6379"
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    volumes:
+      - ../docker/data/redis:/data
+    restart: unless-stopped
+    networks:
+      - address_parser_net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.2'
+          memory: 256M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+# Volumes được mount trực tiếp vào ./docker/data/
+
+networks:
+  address_parser_net:
+    driver: bridge

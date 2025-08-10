@@ -1,0 +1,33 @@
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: true
+    jsonData:
+      timeInterval: "15s"
+      queryTimeout: "60s"
+      httpMethod: "POST"
+      manageAlerts: true
+      alertmanagerUid: "prometheus"
+      prometheusType: "Prometheus"
+      prometheusVersion: "2.45.0"
+      cacheLevel: "High"
+      disableRecordingRules: false
+      disableAlerting: false
+      incrementalQueryOverlapWindow: "10m"
+      incrementalQueryOverlapWindowEnabled: false
+      maxDataPoints: 1100
+      maxLines: 1000
+      maxSeries: 1000
+      maxExemplars: 1000
+      defaultEditor: "code"
+      codeMode: "code"
+      exemplarTraceIdDestinations:
+        - name: "trace_id"
+          datasourceUid: "prometheus"
+    secureJsonData: {}
+    version: 1
