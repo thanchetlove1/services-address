@@ -20,6 +20,18 @@ type GazetteerSearcher struct {
 	timeout   time.Duration
 }
 
+// AdminUnitDoc kiểu document trong Meilisearch (v0.30.0 compatible)
+type AdminUnitDoc struct {
+	AdminID        string   `json:"admin_id"`
+	ParentID       *string  `json:"parent_id,omitempty"`
+	Level          int      `json:"level"`
+	Name           string   `json:"name"`
+	NormalizedName string   `json:"normalized_name"`
+	Aliases        []string `json:"aliases"`
+	AdminSubtype   string   `json:"admin_subtype"`
+	Path           []string `json:"path"`
+}
+
 // SearchConfig cấu hình cho Meilisearch
 type SearchConfig struct {
 	Host          string
@@ -48,6 +60,109 @@ func NewGazetteerSearcher(config SearchConfig, logger *zap.Logger) (*GazetteerSe
 	}
 	
 	return gs, nil
+}
+
+// search unified search method with filters (v0.30.0 compatible)
+func (gs *GazetteerSearcher) search(ctx context.Context, q string, filters []string, limit int) ([]AdminUnitDoc, error) {
+	idx := gs.client.Index(gs.indexName)
+	req := &meilisearch.SearchRequest{
+		Filter: filters, // []string{fmt.Sprintf("level = %d", level), fmt.Sprintf(`parent_id = "%s"`, parent)}
+		Limit:  int64(limit),
+		AttributesToRetrieve: []string{
+			"admin_id", "parent_id", "level", "name",
+			"normalized_name", "aliases", "admin_subtype", "path",
+		},
+	}
+	resp, err := idx.Search(q, req)
+	if err != nil {
+		return nil, err
+	}
+	var out []AdminUnitDoc
+	
+	// Manual unmarshal for v0.30.0 compatibility
+	for _, hit := range resp.Hits {
+		hitMap, ok := hit.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		
+		doc := AdminUnitDoc{}
+		if adminID, ok := hitMap["admin_id"].(string); ok {
+			doc.AdminID = adminID
+		}
+		if name, ok := hitMap["name"].(string); ok {
+			doc.Name = name
+		}
+		if normalizedName, ok := hitMap["normalized_name"].(string); ok {
+			doc.NormalizedName = normalizedName
+		}
+		if level, ok := hitMap["level"].(float64); ok {
+			doc.Level = int(level)
+		}
+		if adminSubtype, ok := hitMap["admin_subtype"].(string); ok {
+			doc.AdminSubtype = adminSubtype
+		}
+		
+		// Handle parent_id (nullable)
+		if parentID, ok := hitMap["parent_id"].(string); ok && parentID != "" {
+			doc.ParentID = &parentID
+		}
+		
+		// Handle aliases array
+		if aliasesRaw, ok := hitMap["aliases"].([]interface{}); ok {
+			aliases := make([]string, len(aliasesRaw))
+			for i, alias := range aliasesRaw {
+				if aliasStr, ok := alias.(string); ok {
+					aliases[i] = aliasStr
+				}
+			}
+			doc.Aliases = aliases
+		}
+		
+		// Handle path array
+		if pathRaw, ok := hitMap["path"].([]interface{}); ok {
+			path := make([]string, len(pathRaw))
+			for i, pathItem := range pathRaw {
+				if pathStr, ok := pathItem.(string); ok {
+					path[i] = pathStr
+				}
+			}
+			doc.Path = path
+		}
+		
+		out = append(out, doc)
+	}
+	
+	return out, nil
+}
+
+// SearchByLevel search by administrative level with optional parent filter
+func (gs *GazetteerSearcher) SearchByLevel(ctx context.Context, q string, level int, parentID string, limit int) ([]AdminUnitDoc, error) {
+	var filters []string
+	
+	// Only add level filter if level > 0 (0 means search all levels)
+	if level > 0 {
+		filters = append(filters, fmt.Sprintf("level = %d", level))
+	}
+	
+	if parentID != "" {
+		filters = append(filters, fmt.Sprintf(`parent_id = "%s"`, parentID))
+	}
+	
+	return gs.search(ctx, q, filters, limit)
+}
+
+// TryAsciiMatch ASCII matching with normalization
+func (gs *GazetteerSearcher) TryAsciiMatch(ctx context.Context, q string, level int, parentID string, limit int) ([]AdminUnitDoc, error) {
+	// Use normalized query for ASCII matching
+	normalizedQ := strings.ToLower(q) // Simple normalization for now
+	return gs.SearchByLevel(ctx, normalizedQ, level, parentID, limit)
+}
+
+// TryFuzzyMatch fuzzy matching using Meilisearch typo tolerance
+func (gs *GazetteerSearcher) TryFuzzyMatch(ctx context.Context, q string, level int, parentID string, limit int) ([]AdminUnitDoc, error) {
+	// Meilisearch has built-in typo tolerance; just use SearchByLevel with broader filters
+	return gs.SearchByLevel(ctx, q, level, parentID, limit)
 }
 
 // MultiSearchRequest cấu trúc để thực hiện multi-search theo hierarchy

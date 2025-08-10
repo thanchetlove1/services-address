@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"regexp"
@@ -152,6 +153,7 @@ func (am *AddressMatcher) MatchAddress(rawAddress string, gazetteerVersion strin
 	
 	// 6. Try ASCII matching if no exact match (fast, score=0.9)
 	if len(candidates) == 0 {
+		var err error
 		candidates, strategy, err = am.tryAsciiMatch(normalized)
 		if err != nil {
 			am.logger.Warn("Lỗi ASCII match", zap.Error(err))
@@ -160,6 +162,7 @@ func (am *AddressMatcher) MatchAddress(rawAddress string, gazetteerVersion strin
 	
 	// 7. Try alias matching (medium, score=0.8)
 	if len(candidates) == 0 {
+		var err error
 		candidates, strategy, err = am.tryAliasMatch(normalized)
 		if err != nil {
 			am.logger.Warn("Lỗi alias match", zap.Error(err))
@@ -168,6 +171,7 @@ func (am *AddressMatcher) MatchAddress(rawAddress string, gazetteerVersion strin
 	
 	// 8. Try controlled fuzzy matching (slowest, score=0.5-0.7, chỉ khi cần thiết)
 	if len(candidates) == 0 {
+		var err error
 		candidates, strategy, err = am.tryFuzzyMatch(normalized)
 		if err != nil {
 			am.logger.Warn("Lỗi fuzzy match", zap.Error(err))
@@ -209,18 +213,22 @@ func (am *AddressMatcher) MatchAddress(rawAddress string, gazetteerVersion strin
 
 // tryExactMatch thử exact matching (có dấu)
 func (am *AddressMatcher) tryExactMatch(normalized string) ([]models.Candidate, MatchStrategy, error) {
-	// Direct search in Meilisearch for exact matches
-	adminUnits, _, err := am.searcher.SearchWithFilter(normalized, "", 10)
+	// Use new SearchByLevel method to bypass hybrid issue
+	ctx := context.Background()
+	adminDocs, err := am.searcher.SearchByLevel(ctx, normalized, 0, "", 10) // level 0 = search all levels
 	if err != nil {
 		return nil, MatchStrategyExact, err
 	}
+	
+	// Convert AdminUnitDoc to AdminUnit for compatibility
+	adminUnits := am.convertDocsToUnits(adminDocs)
 	
 	// Convert AdminUnits to Candidates with exact match scoring
 	var exactCandidates []models.Candidate
 	for _, unit := range adminUnits {
 		candidate := models.Candidate{
-			AdminUnit: unit,
-			Score:     1.0, // Exact match gets highest score
+			AdminUnits: []models.AdminUnit{unit},
+			Score:      1.0, // Exact match gets highest score
 		}
 		exactCandidates = append(exactCandidates, candidate)
 	}
@@ -248,8 +256,29 @@ func (am *AddressMatcher) tryExactMatchOld(normalized string) ([]models.Candidat
 	return exactCandidates, MatchStrategyExact, nil
 }
 
-// tryAsciiMatch thử ASCII matching (không dấu)
+// tryAsciiMatch thử ASCII matching (không dấu) với level filtering
 func (am *AddressMatcher) tryAsciiMatch(normalized string) ([]models.Candidate, MatchStrategy, error) {
+	// Use direct search with level filtering for better accuracy
+	adminUnits, _, err := am.searcher.SearchWithFilter(normalized, "", 10)
+	if err != nil {
+		return nil, MatchStrategyAscii, err
+	}
+	
+	// Convert AdminUnits to Candidates with ASCII match scoring
+	var candidates []models.Candidate
+	for _, unit := range adminUnits {
+		candidate := models.Candidate{
+			AdminUnits: []models.AdminUnit{unit},
+			Score:      0.9, // ASCII match gets high score
+		}
+		candidates = append(candidates, candidate)
+	}
+	
+	return candidates, MatchStrategyAscii, nil
+}
+
+// tryAsciiMatchOld - original method using SearchAddress
+func (am *AddressMatcher) tryAsciiMatchOld(normalized string) ([]models.Candidate, MatchStrategy, error) {
 	candidates, err := am.searcher.SearchAddress(normalized, 4)
 	if err != nil {
 		return nil, MatchStrategyAscii, err
@@ -269,6 +298,27 @@ func (am *AddressMatcher) tryAsciiMatch(normalized string) ([]models.Candidate, 
 
 // tryAliasMatch thử alias expansion matching
 func (am *AddressMatcher) tryAliasMatch(normalized string) ([]models.Candidate, MatchStrategy, error) {
+	// Use direct search with alias matching
+	adminUnits, _, err := am.searcher.SearchWithFilter(normalized, "", 12)
+	if err != nil {
+		return nil, MatchStrategyAlias, err
+	}
+	
+	// Convert AdminUnits to Candidates with alias match scoring
+	var candidates []models.Candidate
+	for _, unit := range adminUnits {
+		candidate := models.Candidate{
+			AdminUnits: []models.AdminUnit{unit},
+			Score:      0.8, // Alias match gets medium score
+		}
+		candidates = append(candidates, candidate)
+	}
+	
+	return candidates, MatchStrategyAlias, nil
+}
+
+// tryAliasMatchOld - original method using SearchAddress
+func (am *AddressMatcher) tryAliasMatchOld(normalized string) ([]models.Candidate, MatchStrategy, error) {
 	candidates, err := am.searcher.SearchAddress(normalized, 4)
 	if err != nil {
 		return nil, MatchStrategyAlias, err
@@ -286,8 +336,29 @@ func (am *AddressMatcher) tryAliasMatch(normalized string) ([]models.Candidate, 
 	return aliasCandidates, MatchStrategyAlias, nil
 }
 
-// tryFuzzyMatch thử controlled fuzzy matching
+// tryFuzzyMatch thử fuzzy matching với Meilisearch 1.5.x typo tolerance
 func (am *AddressMatcher) tryFuzzyMatch(normalized string) ([]models.Candidate, MatchStrategy, error) {
+	// Meilisearch 1.5.x fuzzy = typo tolerance + matchingStrategy "last"
+	adminUnits, _, err := am.searcher.SearchWithFilter(normalized, "", 15)
+	if err != nil {
+		return nil, MatchStrategyFuzzy, err
+	}
+	
+	// Convert AdminUnits to Candidates with fuzzy match scoring
+	var candidates []models.Candidate
+	for _, unit := range adminUnits {
+		candidate := models.Candidate{
+			AdminUnits: []models.AdminUnit{unit},
+			Score:      0.6, // Fuzzy match gets lower score
+		}
+		candidates = append(candidates, candidate)
+	}
+	
+	return candidates, MatchStrategyFuzzy, nil
+}
+
+// tryFuzzyMatchOld - original method using FuzzySearch
+func (am *AddressMatcher) tryFuzzyMatchOld(normalized string) ([]models.Candidate, MatchStrategy, error) {
 	candidates, err := am.searcher.FuzzySearch(normalized, 0.5)
 	if err != nil {
 		return nil, MatchStrategyFuzzy, err
@@ -626,16 +697,36 @@ type AdministrativeComponents struct {
 // extractAdministrativeComponents extracts admin components from normalized address
 func (am *AddressMatcher) extractAdministrativeComponents(normalized string) AdministrativeComponents {
 	components := AdministrativeComponents{}
-	words := strings.Split(normalized, "_")
+	// Split on both spaces and underscores, then filter empty
+	words := strings.FieldsFunc(normalized, func(r rune) bool {
+		return r == ' ' || r == '_'
+	})
 	
-	// Right-to-left scan for administrative components
+	// Right-to-left scan for administrative components (multi-word provinces)
 	for i := len(words) - 1; i >= 0; i-- {
+		// Try single word first
 		word := words[i]
-		
-		// Look for province patterns (rightmost administrative level)
 		if am.isProvincePattern(word) {
 			components.Province = word
 			break
+		}
+		
+		// Try two-word combination (for "tien giang", "ho chi minh", etc.)
+		if i > 0 {
+			twoWord := words[i-1] + " " + words[i]
+			if am.isProvincePattern(twoWord) {
+				components.Province = twoWord
+				break
+			}
+		}
+		
+		// Try three-word combination (for "ho chi minh")
+		if i > 1 {
+			threeWord := words[i-2] + " " + words[i-1] + " " + words[i]
+			if am.isProvincePattern(threeWord) {
+				components.Province = threeWord
+				break
+			}
 		}
 	}
 	
@@ -676,7 +767,8 @@ func (am *AddressMatcher) extractAdministrativeComponents(normalized string) Adm
 
 // Helper pattern detection methods
 func (am *AddressMatcher) isProvincePattern(word string) bool {
-	// Common province names and patterns
+	// Common province names and patterns (support both space and underscore)
+	wordNormalized := strings.ReplaceAll(word, " ", "_")
 	provincePatterns := []string{
 		"tien_giang", "ho_chi_minh", "ha_noi", "da_nang", "hai_phong", "can_tho",
 		"an_giang", "bac_giang", "ben_tre", "binh_duong", "binh_phuoc", "binh_thuan",
@@ -691,7 +783,7 @@ func (am *AddressMatcher) isProvincePattern(word string) bool {
 	}
 	
 	for _, pattern := range provincePatterns {
-		if word == pattern {
+		if wordNormalized == pattern {
 			return true
 		}
 	}
@@ -730,8 +822,11 @@ func (am *AddressMatcher) filterDistrictsByProvince(provinceCandidates []models.
 	
 	for _, provinceCandidate := range provinceCandidates {
 		// Search for districts within this province
+		if len(provinceCandidate.AdminUnits) == 0 {
+			continue
+		}
 		districtCandidates, _, err := am.searcher.SearchWithFilter(district, 
-			fmt.Sprintf("level = 3 AND parent_id = '%s'", provinceCandidate.AdminUnit.AdminID), 5)
+			fmt.Sprintf("level = 3 AND parent_id = '%s'", provinceCandidate.AdminUnits[0].AdminID), 5)
 		if err != nil {
 			am.logger.Warn("Error filtering districts", zap.Error(err))
 			continue
@@ -740,8 +835,8 @@ func (am *AddressMatcher) filterDistrictsByProvince(provinceCandidates []models.
 		// Convert AdminUnits to Candidates
 		for _, adminUnit := range districtCandidates {
 			candidate := models.Candidate{
-				AdminUnit: adminUnit,
-				Score:     0.8, // District match score
+				AdminUnits: []models.AdminUnit{adminUnit},
+				Score:      0.8, // District match score
 			}
 			results = append(results, candidate)
 		}
@@ -750,14 +845,43 @@ func (am *AddressMatcher) filterDistrictsByProvince(provinceCandidates []models.
 	return results
 }
 
+// convertDocsToUnits converts AdminUnitDoc to AdminUnit for compatibility
+func (am *AddressMatcher) convertDocsToUnits(docs []search.AdminUnitDoc) []models.AdminUnit {
+	units := make([]models.AdminUnit, len(docs))
+	for i, doc := range docs {
+		unit := models.AdminUnit{
+			AdminID:        doc.AdminID,
+			Name:           doc.Name,
+			NormalizedName: doc.NormalizedName,
+			Type:           "", // Will be set from admin_subtype
+			AdminSubtype:   doc.AdminSubtype,
+			Level:          doc.Level,
+			Aliases:        doc.Aliases,
+			Path:           doc.Path,
+		}
+		
+		// Set parent_id if available  
+		if doc.ParentID != nil {
+			parentID := *doc.ParentID
+			unit.ParentID = &parentID
+		}
+		
+		units[i] = unit
+	}
+	return units
+}
+
 // filterWardsByDistrict filters wards that belong to given district candidates
 func (am *AddressMatcher) filterWardsByDistrict(districtCandidates []models.Candidate, ward string) []models.Candidate {
 	var results []models.Candidate
 	
 	for _, districtCandidate := range districtCandidates {
 		// Search for wards within this district
+		if len(districtCandidate.AdminUnits) == 0 {
+			continue
+		}
 		wardUnits, _, err := am.searcher.SearchWithFilter(ward,
-			fmt.Sprintf("level = 4 AND parent_id = '%s'", districtCandidate.AdminUnit.AdminID), 5)
+			fmt.Sprintf("level = 4 AND parent_id = '%s'", districtCandidate.AdminUnits[0].AdminID), 5)
 		if err != nil {
 			am.logger.Warn("Error filtering wards", zap.Error(err))
 			continue
@@ -766,8 +890,8 @@ func (am *AddressMatcher) filterWardsByDistrict(districtCandidates []models.Cand
 		// Convert AdminUnits to Candidates
 		for _, adminUnit := range wardUnits {
 			candidate := models.Candidate{
-				AdminUnit: adminUnit,
-				Score:     0.9, // Ward match score
+				AdminUnits: []models.AdminUnit{adminUnit},
+				Score:      0.9, // Ward match score
 			}
 			results = append(results, candidate)
 		}

@@ -3,8 +3,6 @@ package normalizer
 import (
 	"regexp"
 	"strings"
-	"unicode"
-	"unicode/utf8"
 	
 	"github.com/mozillazg/go-unidecode"
 )
@@ -339,21 +337,47 @@ func (tn *TextNormalizerV2) NormalizeAddress(rawAddress string) *NormalizationRe
 	return result
 }
 
-// step1NoiseRemovalAndDualNormalization implements PROMPT step 1
+// step1NoiseRemovalAndDualNormalization implements PROMPT step 1 - FIXED ORDER
 func (tn *TextNormalizerV2) step1NoiseRemovalAndDualNormalization(input string) (string, string) {
-	// Create dual versions: (a) original, (b) no diacritics + lowercase
-	original := input
-	normalized := tn.removeDiacritics(strings.ToLower(input))
+	// Create dual versions: (a) original cleaned, (b) no diacritics + lowercase
+	original := strings.TrimSpace(input)
+	if original == "" {
+		return "", ""
+	}
 	
-	// Remove noise patterns
-	normalized = tn.phonePattern.ReplaceAllString(normalized, "")
-	normalized = tn.orderCodePattern.ReplaceAllString(normalized, "")
-	normalized = tn.prefixPattern.ReplaceAllString(normalized, "")
+	// Start with lowercase for processing
+	working := strings.ToLower(original)
 	
-	// Merge punctuation to spaces and collapse
-	normalized = tn.punctuationPattern.ReplaceAllString(normalized, " ")
+	// 1) Remove noise patterns FIRST (while still has diacritics)
+	working = tn.phonePattern.ReplaceAllString(working, " ")
+	working = tn.orderCodePattern.ReplaceAllString(working, " ")
+	working = tn.prefixPattern.ReplaceAllString(working, " ")
+	
+	// 2) Merge punctuation to spaces
+	working = tn.punctuationPattern.ReplaceAllString(working, " ")
+	
+	// 3) Strip diacritics SECOND (after noise removal)
+	normalized := tn.removeDiacritics(working)
+	
+	// 4) NOW filter ASCII-safe and collapse spaces  
+	normalized = regexp.MustCompile(`[^a-z0-9\s/.\-]`).ReplaceAllString(normalized, " ")
+	normalized = strings.ReplaceAll(normalized, "đ", "d") // Handle đ specifically
 	normalized = regexp.MustCompile(`\s+`).ReplaceAllString(normalized, " ")
 	normalized = strings.TrimSpace(normalized)
+	
+	// Fallback: ensure never empty
+	if normalized == "" {
+		fallback := tn.removeDiacritics(strings.ToLower(input))
+		normalized = regexp.MustCompile(`[^a-z0-9\s]`).ReplaceAllString(fallback, " ")
+		normalized = regexp.MustCompile(`\s+`).ReplaceAllString(normalized, " ")
+		normalized = strings.TrimSpace(normalized)
+	}
+	
+	// DEBUG: Log what we're producing
+	if normalized == "" {
+		// Still empty? Something is very wrong
+		normalized = "debug_empty_" + strings.ToLower(input)
+	}
 	
 	return original, normalized
 }
@@ -624,17 +648,23 @@ func (tn *TextNormalizerV2) step9QualityTaggingAndResidualTracking(input string,
 		if matched {
 			processedWords = append(processedWords, word)
 		} else {
-			// Unknown tokens go to residual for learning
-			residual = append(residual, word)
+			// Keep unknown tokens in output (they might be province/district names)
+			// Only move to residual if they look like noise
+			if len(word) >= 2 { // Keep meaningful words
+				processedWords = append(processedWords, word)
+			} else {
+				// Single chars or obvious noise go to residual for learning
+				residual = append(residual, word)
+			}
 		}
 	}
 	
 	finalTags.Residual = residual
 	
-	// Final cleanup with underscores
-	finalText := strings.Join(processedWords, "_")
-	finalText = regexp.MustCompile(`_+`).ReplaceAllString(finalText, "_")
-	finalText = strings.Trim(finalText, "_")
+	// Final cleanup with spaces (not underscores)
+	finalText := strings.Join(processedWords, " ")
+	finalText = regexp.MustCompile(`\s+`).ReplaceAllString(finalText, " ")
+	finalText = strings.TrimSpace(finalText)
 	
 	return finalText, finalTags
 }
