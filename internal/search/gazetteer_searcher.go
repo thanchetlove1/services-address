@@ -62,11 +62,18 @@ func NewGazetteerSearcher(config SearchConfig, logger *zap.Logger) (*GazetteerSe
 	return gs, nil
 }
 
-// search unified search method with filters (v0.30.0 compatible)
+// search unified search method with filters (v1.5 compatible)
 func (gs *GazetteerSearcher) search(ctx context.Context, q string, filters []string, limit int) ([]AdminUnitDoc, error) {
 	idx := gs.client.Index(gs.indexName)
+	
+	// Join filters with AND for Meilisearch 1.5+
+	var filterStr string
+	if len(filters) > 0 {
+		filterStr = strings.Join(filters, " AND ")
+	}
+	
 	req := &meilisearch.SearchRequest{
-		Filter: filters, // []string{fmt.Sprintf("level = %d", level), fmt.Sprintf(`parent_id = "%s"`, parent)}
+		Filter: filterStr, // string instead of []string for v1.5+
 		Limit:  int64(limit),
 		AttributesToRetrieve: []string{
 			"admin_id", "parent_id", "level", "name",

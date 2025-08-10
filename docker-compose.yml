@@ -47,9 +47,9 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  # Meilisearch 1.5+ (Search Engine)
+  # Meilisearch 1.11+ (Search Engine with Hybrid Search support)
   meili:
-    image: getmeili/meilisearch:v1.5
+    image: getmeili/meilisearch:v1.11
     container_name: address_parser_meilisearch
     ports:
       - "7700:7700"

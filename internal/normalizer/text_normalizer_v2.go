@@ -1,6 +1,8 @@
 package normalizer
 
 import (
+	"crypto/sha256"
+	"fmt"
 	"regexp"
 	"strings"
 )
@@ -711,6 +713,13 @@ func (tn *TextNormalizerV2) step9QualityTaggingAndResidualTracking(input string,
 	finalText = regexp.MustCompile(`\s+`).ReplaceAllString(finalText, " ")
 	finalText = strings.TrimSpace(finalText)
 	
+	// Safety fallback: nếu finalText rỗng, dùng input đã strip diacritics
+	if finalText == "" {
+		finalText = strings.ToLower(tn.removeDiacritics(input))
+		finalText = regexp.MustCompile(`\s+`).ReplaceAllString(finalText, " ")
+		finalText = strings.TrimSpace(finalText)
+	}
+	
 	return finalText, finalTags
 }
 
@@ -732,5 +741,9 @@ func (tn *TextNormalizerV2) isStreetTypeContext(words []string, index int) bool 
 
 func (tn *TextNormalizerV2) generateFingerprint(normalized, version string) string {
 	// SHA256 of normalized + version as per PROMPT
-	return "sha256:" + normalized + "\x1F" + version
+	h := sha256.New()
+	h.Write([]byte(normalized))
+	h.Write([]byte{0x1F}) // separator
+	h.Write([]byte(version))
+	return fmt.Sprintf("sha256:%x", h.Sum(nil))
 }
