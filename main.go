@@ -53,7 +53,7 @@ func main() {
 	}
 
 	// 5. Khởi tạo components
-	textNormalizer := normalizer.NewTextNormalizer()
+	textNormalizer := normalizer.NewTextNormalizerV2()
 	addressParser := parser.NewAddressParser(gazetteerSearcher, textNormalizer, logger)
 
 	// 6. Khởi tạo cache services (Redis L1 + MongoDB L2)

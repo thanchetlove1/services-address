@@ -3,8 +3,6 @@ package normalizer
 import (
 	"regexp"
 	"strings"
-	
-	"github.com/mozillazg/go-unidecode"
 )
 
 // TextNormalizerV2 implements 9-step normalization pipeline theo PROMPT HYBRID-FINAL
@@ -93,10 +91,54 @@ func NewTextNormalizerV2() *TextNormalizerV2 {
 		normalPriorityPatterns: make(map[string]*regexp.Regexp),
 	}
 	
-	tn.initializePatterns()
-	tn.initializeMaps()
+	// Load rules từ embedded YAML files
+	if err := tn.loadRulesFromEmbed(); err != nil {
+		// Fallback to hardcoded patterns nếu load rules thất bại
+		tn.initializePatterns()
+		tn.initializeMaps()
+	}
 	
 	return tn
+}
+
+// loadRulesFromEmbed load rules từ embedded YAML files
+func (tn *TextNormalizerV2) loadRulesFromEmbed() error {
+	config, err := LoadRulesConfig()
+	if err != nil {
+		return err
+	}
+	
+	// Load regex patterns
+	if config.NoisePatterns != nil {
+		// Có thể cập nhật patterns từ config ở đây
+	}
+	
+	// Load maps
+	if config.UnigramMap != nil {
+		for k, v := range config.UnigramMap {
+			tn.unigramMap[k] = v
+		}
+	}
+	
+	if config.BigramMap != nil {
+		for k, v := range config.BigramMap {
+			tn.bigramMap[k] = v
+		}
+	}
+	
+	if config.TrigramMap != nil {
+		for k, v := range config.TrigramMap {
+			tn.trigramMap[k] = v
+		}
+	}
+	
+	if config.EnglishVietnamese != nil {
+		for k, v := range config.EnglishVietnamese {
+			tn.englishVietnameseMap[k] = v
+		}
+	}
+	
+	return nil
 }
 
 // initializePatterns compiles all regex patterns for performance
@@ -110,7 +152,7 @@ func (tn *TextNormalizerV2) initializePatterns() {
 	// Step 2: POI extraction (Smart Rules)
 	tn.companyPattern = regexp.MustCompile(`(?i)(CÔNG TY|CTY|NGÂN HÀNG|TRƯỜNG|BỆNH VIỆN|TRUNG TÂM)\s+([^,]+)`)
 	tn.buildingPattern = regexp.MustCompile(`(?i)(Tower|Block|Tòa|Lầu|Tầng|Suite|Unit|Apt|Room)\s*([A-Z0-9.]+)`)
-	tn.complexPattern = regexp.MustCompile(`(?i)(Vinhomes|Royal City|Somerset|VCCI|KCN|KDC|KĐT)\s*([^,]+)`)
+	tn.complexPattern = regexp.MustCompile(`(?i)(Vinhomes|Royal City|VCCI|KCN|KDC|KĐT)\s+([^,\s]+(?:\s+[^,\s]+)*)`)
 	
 	// Step 5: P. disambiguation
 	tn.phuongPattern = regexp.MustCompile(`(?i)P\.\s*([1-9]|1[0-9]|20|[a-zA-Z]+)`)
@@ -390,19 +432,22 @@ func (tn *TextNormalizerV2) step2POIAndCompanyExtraction(input string) (string, 
 	// Extract company/organization names
 	if matches := tn.companyPattern.FindStringSubmatch(input); len(matches) > 2 {
 		poi.Company = strings.TrimSpace(matches[2])
-		result = tn.companyPattern.ReplaceAllString(result, "")
+		// Replace with space instead of empty string to preserve text structure
+		result = tn.companyPattern.ReplaceAllString(result, " ")
 	}
 	
 	// Extract building information
 	if matches := tn.buildingPattern.FindStringSubmatch(input); len(matches) > 2 {
 		poi.Building = strings.TrimSpace(matches[1] + " " + matches[2])
-		result = tn.buildingPattern.ReplaceAllString(result, "")
+		// Replace with space instead of empty string to preserve text structure
+		result = tn.buildingPattern.ReplaceAllString(result, " ")
 	}
 	
 	// Extract complex names
 	if matches := tn.complexPattern.FindStringSubmatch(input); len(matches) > 2 {
 		poi.Complex = strings.TrimSpace(matches[1] + " " + matches[2])
-		result = tn.complexPattern.ReplaceAllString(result, "")
+		// Replace with space instead of empty string to preserve text structure
+		result = tn.complexPattern.ReplaceAllString(result, " ")
 		
 		// Check for specific types
 		complexName := strings.ToLower(matches[1])
@@ -671,7 +716,8 @@ func (tn *TextNormalizerV2) step9QualityTaggingAndResidualTracking(input string,
 
 // Helper functions
 func (tn *TextNormalizerV2) removeDiacritics(input string) string {
-	return unidecode.Unidecode(input)
+	// Sử dụng StripDiacritics thuần Go để loại bỏ dấu
+	return StripDiacritics(input)
 }
 
 func (tn *TextNormalizerV2) isAdminLevelContext(words []string, index int) bool {

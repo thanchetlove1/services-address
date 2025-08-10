@@ -13,12 +13,12 @@ import (
 // AddressParser parser địa chỉ chính
 type AddressParser struct {
 	matcher    *AddressMatcher
-	normalizer *normalizer.TextNormalizer
+	normalizer *normalizer.TextNormalizerV2
 	logger     *zap.Logger
 }
 
 // NewAddressParser tạo mới AddressParser
-func NewAddressParser(searcher *search.GazetteerSearcher, normalizer *normalizer.TextNormalizer, logger *zap.Logger) *AddressParser {
+func NewAddressParser(searcher *search.GazetteerSearcher, normalizer *normalizer.TextNormalizerV2, logger *zap.Logger) *AddressParser {
 	matcher := NewAddressMatcher(searcher, normalizer, logger)
 	
 	return &AddressParser{

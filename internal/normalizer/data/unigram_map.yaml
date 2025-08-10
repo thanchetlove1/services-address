@@ -1,0 +1,43 @@
+# Unigram mapping cho TextNormalizerV2
+# Administrative abbreviations
+admin_abbreviations:
+  tp: "thanh pho"
+  hcm: "ho chi minh"
+  q: "quan"
+  p: "phuong"
+  h: "huyen"
+  tx: "thi xa"
+  tt: "thi tran"
+  x: "xa"
+
+# Street abbreviations
+street_abbreviations:
+  d: "duong"
+  duong: "duong"
+  ql: "quoc lo"
+  dt: "duong tinh"
+  tl: "tinh lo"
+  dl: "dai lo"
+
+# Common abbreviations
+common_abbreviations:
+  kp: "khu pho"
+  hem: "hem"
+  ngach: "ngach"
+  ngo: "ngo"
+  kcn: "khu cong nghiep"
+  kdc: "khu dan cu"
+  kdt: "khu do thi"
+
+# English to Vietnamese
+english_vietnamese:
+  street: "duong"
+  road: "duong"
+  avenue: "dai lo"
+  boulevard: "dai lo"
+  lane: "hem"
+  alley: "ngach"
+  district: "quan"
+  ward: "phuong"
+  province: "tinh"
+  city: "thanh pho"

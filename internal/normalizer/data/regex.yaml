@@ -1,0 +1,34 @@
+# Regex patterns cho TextNormalizerV2
+# Noise removal patterns
+noise_patterns:
+  phone: '\b(?:0[0-9]{9,10}|[+]84[0-9]{9})\b'
+  order_code: '\b(?:DH|HD|PO|SO)[-_\s]?[A-Z0-9]{6,12}\b'
+  prefix: '\b(?:Địa chỉ|Address|Địa điểm|Location):\s*'
+  punctuation: '[–—\-\/,\.;:]'
+
+# POI extraction patterns
+poi_patterns:
+  company: '(?i)(?:công ty|cty|ngân hàng|trường|bệnh viện|trung tâm)\s+([a-z0-9\s]+)'
+  building: '(?i)(?:tower|block|tòa|lầu|tầng|suite|unit|apt|room|ch|can\s*ho)\s+([a-z0-9\s\-\.]+)'
+  complex: '(?i)(?:vinhomes|royal\s*city|somerset|vcci|kcn|kdc|kđt)\s+([a-z0-9\s]+)'
+
+# Administrative level patterns
+admin_patterns:
+  province: '\b(?:tỉnh|tp|thành phố)\b'
+  district: '\b(?:huyện|quận|tx|thị xã)\b'
+  ward: '\b(?:xã|phường|tt|thị trấn)\b'
+
+# Street type patterns
+street_patterns:
+  duong: '\b(?:d|duong|đường)\b'
+  quoc_lo: '\b(?:ql|quoc lo|quốc lộ)\b'
+  duong_tinh: '\b(?:dt|duong tinh|đường tỉnh)\b'
+  tinh_lo: '\b(?:tl|tinh lo|tỉnh lộ)\b'
+  dai_lo: '\b(?:dl|dai lo|đại lộ)\b'
+
+# House number patterns
+house_patterns:
+  simple: '\b(\d+)\s*(?:ngách|ngõ|hẻm|hem)?\s*'
+  complex: '\b([A-Z]\d+\.\d+\.\w+\.\d+)\b'
+  khu_pho: '\b(?:kp|khu phố)\s*(\d+)\b'
+  phuong: '\b(?:p|phường)\s*(\d+)\b'

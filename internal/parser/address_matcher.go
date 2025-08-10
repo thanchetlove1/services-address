@@ -54,7 +54,7 @@ const (
 // AddressMatcher service thực hiện matching và scoring
 type AddressMatcher struct {
 	searcher    *search.GazetteerSearcher
-	normalizer  *normalizer.TextNormalizer
+	normalizer  *normalizer.TextNormalizerV2
 	extractor   *normalizer.PatternExtractor
 	logger      *zap.Logger
 	
@@ -81,7 +81,7 @@ type MatchResult struct {
 }
 
 // NewAddressMatcher tạo mới AddressMatcher
-func NewAddressMatcher(searcher *search.GazetteerSearcher, textNormalizer *normalizer.TextNormalizer, logger *zap.Logger) *AddressMatcher {
+func NewAddressMatcher(searcher *search.GazetteerSearcher, textNormalizer *normalizer.TextNormalizerV2, logger *zap.Logger) *AddressMatcher {
 	return &AddressMatcher{
 		searcher:        searcher,
 		normalizer:      textNormalizer,
@@ -98,7 +98,8 @@ func (am *AddressMatcher) MatchAddress(rawAddress string, gazetteerVersion strin
 	start := time.Now()
 	
 	// 1. Normalize address
-	_, normalized := am.normalizer.NormalizeAddress(rawAddress)
+	normalizationResult := am.normalizer.NormalizeAddress(rawAddress)
+	normalized := normalizationResult.NormalizedNoDiacritics
 	
 	// 2. Extract patterns
 	patterns := am.extractor.ExtractPatterns(normalized)

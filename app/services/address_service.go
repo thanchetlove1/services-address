@@ -16,7 +16,7 @@ import (
 // AddressService service xử lý logic parse địa chỉ
 type AddressService struct {
 	parser     *parser.AddressParser
-	normalizer *normalizer.TextNormalizer
+	normalizer *normalizer.TextNormalizerV2
 	searcher   *search.GazetteerSearcher
 	logger     *zap.Logger
 	startTime  time.Time
@@ -41,7 +41,7 @@ type JobStatus struct {
 }
 
 // NewAddressService tạo mới AddressService
-func NewAddressService(parser *parser.AddressParser, normalizer *normalizer.TextNormalizer, searcher *search.GazetteerSearcher, logger *zap.Logger) *AddressService {
+func NewAddressService(parser *parser.AddressParser, normalizer *normalizer.TextNormalizerV2, searcher *search.GazetteerSearcher, logger *zap.Logger) *AddressService {
 	return &AddressService{
 		parser:     parser,
 		normalizer: normalizer,
