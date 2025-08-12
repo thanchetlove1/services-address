@@ -4,6 +4,7 @@ import (
 	"compress/gzip"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -12,6 +13,7 @@ import (
 	"github.com/address-parser/app/models"
 	"github.com/address-parser/app/services"
 	"github.com/address-parser/helpers/utils"
+	"github.com/address-parser/internal/parser"
 	"go.uber.org/zap"
 )
 
@@ -264,4 +266,57 @@ func (w *gzipResponseWriter) Flush() {
 	if flusher, ok := w.ResponseWriter.(http.Flusher); ok {
 		flusher.Flush()
 	}
+}
+
+// === ADDED FROM CODE-V1.MD ===
+
+// statusFromConfidence helper nhỏ
+func statusFromConfidence(conf float64) string {
+	// TODO: Import config package để sử dụng thresholds
+	thresholdHigh := 0.90
+	thresholdReviewLow := 0.60
+	
+	if conf >= thresholdHigh {
+		return "matched"
+	}
+	if conf >= thresholdReviewLow {
+		return "needs_review"
+	}
+	return "unmatched"
+}
+
+// buildFlags build flags từ result
+func buildFlags(res *parser.Result) []string {
+	flags := []string{}
+	if res.Signals.Unit != "" || res.Signals.Level != "" {
+		flags = append(flags, "APARTMENT_UNIT")
+	}
+	if res.Signals.POI != "" {
+		flags = append(flags, "POI_EXTRACTED")
+	}
+	// strategy flag
+	switch res.MatchLevel {
+	case "exact":
+		flags = append(flags, "EXACT_MATCH")
+	case "ascii_exact":
+		flags = append(flags, "ASCII_EXACT")
+	default:
+		flags = append(flags, "FUZZY_MATCH")
+	}
+	return flags
+}
+
+// canonicalFromPath build canonical text từ path
+func canonicalFromPath(house, street string, p parser.Result) string {
+	if !p.HasPath {
+		return strings.Join([]string{house, street}, " ")
+	}
+	w := p.Path.Ward.Name
+	d := p.Path.District.Name
+	pr := p.Path.Province.Name
+	left := strings.Join([]string{house, street}, " ")
+	parts := []string{}
+	if left != "" { parts = append(parts, left) }
+	parts = append(parts, w, d, pr, "Việt Nam")
+	return strings.Join(parts, ", ")
 }

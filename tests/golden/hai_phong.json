@@ -1,0 +1,8 @@
+{
+  "raw": "QUyen-+84354289542-CTN0608826 - 131 Cầu đen, Thị trấn Núi Đối, Huyện Kiến Thuỵ, Thành phố Hải Phòng",
+  "expect": {
+    "status": "matched",
+    "canonical_text": "131 Cầu Đen, Thị trấn Núi Đối, Huyện Kiến Thụy, Thành phố Hải Phòng, Việt Nam",
+    "residual_contains": ["+84354289542", "CTN0608826"]
+  }
+}

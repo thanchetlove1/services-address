@@ -742,3 +742,56 @@ func (as *AddressService) calculateScore(result *models.AddressResult, normalize
 	
 	return score
 }
+
+// === ADDED FROM CODE-V1.MD ===
+
+// Out struct cho batch output
+type Out struct{
+	Raw        string  `json:"raw"`
+	Canonical  string  `json:"canonical_text"`
+	Confidence float64 `json:"confidence"`
+	Status     string  `json:"status"`
+}
+
+// Deps interface cho dependencies
+type Deps interface {
+	parser.ParseDeps
+}
+
+// ProcessBatch xử lý batch addresses với NDJSON output
+func (as *AddressService) ProcessBatch(ctx context.Context, inputs []string, ndjsonPath string) error {
+	// TODO: Implement actual file writing
+	// For now, just log the batch processing
+	
+	as.logger.Info("Processing batch addresses", 
+		zap.Int("total", len(inputs)),
+		zap.String("output_path", ndjsonPath))
+	
+	// Process each address
+	for i, input := range inputs {
+		// Use existing ParseSingle method
+		result, err := as.ParseSingle(input, requests.ParseOptions{
+			Levels: 4,
+			UseCache: true,
+		})
+		
+		if err != nil {
+			as.logger.Warn("Failed to parse address in batch",
+				zap.Int("index", i),
+				zap.String("address", input),
+				zap.Error(err))
+			continue
+		}
+		
+		// Log result
+		as.logger.Debug("Parsed address in batch",
+			zap.Int("index", i),
+			zap.String("raw", input),
+			zap.String("canonical", result.CanonicalText),
+			zap.Float64("confidence", result.Confidence),
+			zap.String("status", result.Status))
+	}
+	
+	as.logger.Info("Completed batch processing", zap.Int("total", len(inputs)))
+	return nil
+}

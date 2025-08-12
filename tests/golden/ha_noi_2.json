@@ -1,0 +1,7 @@
+{
+  "raw": "46 NHAN HOA Phuong Nhan Chinh Quan Thanh Xuan TP Ha Noi, HÀ NỘI",
+  "expect": {
+    "status": "matched",
+    "canonical_text": "46 Nhân Hòa, Phường Nhân Chính, Quận Thanh Xuân, Thành phố Hà Nội, Việt Nam"
+  }
+}

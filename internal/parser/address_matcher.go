@@ -917,3 +917,87 @@ func (am *AddressMatcher) generateFingerprint(normalized, gazetteerVersion strin
 	// TODO: Implement actual SHA256 hashing
 	return fmt.Sprintf("sha256:%x", input) // Placeholder
 }
+
+// === ADDED FROM CODE-V1.MD ===
+
+// ScoreParts struct cho scoring
+type ScoreParts struct {
+	SimWard, SimDistrict, SimProvince float64
+	Structural, RoadBonus, PoiBonus   float64
+	LPCoverage                        float64
+}
+
+// ScorePath tính score cho một path candidate
+func ScorePath(norm string, path search.CandidatePath, sig normalizer.Signals, lpCov float64) (float64, ScoreParts) {
+	wTok, dTok, pTok := normalizer.ExtractAdminTokens(norm)
+
+	parts := ScoreParts{
+		SimWard:    sim(wTok, path.Ward.Name),
+		SimDistrict: sim(dTok, path.District.Name),
+		SimProvince: sim(pTok, path.Province.Name),
+		Structural:  1.0,
+		LPCoverage:  lpCov,
+	}
+
+	// road bonus: có QL/DT/TL/HL/DH trong path
+	if sig.RoadType != "" && strings.Contains(strings.ToLower(path.Ward.PathNormalized), strings.ToLower(sig.RoadType+sig.RoadCode)) {
+		parts.RoadBonus = 1.0
+	}
+
+	// POI bonus (nếu có)
+	if sig.POI != "" && strings.Contains(strings.ToLower(path.Ward.PathNormalized), strings.ToLower(sig.POI)) {
+		parts.PoiBonus = 1.0
+	}
+
+	// TODO: Import config package để sử dụng weights
+	w := struct {
+		Ward, District, Province, StructuralBonus, RoadcodeBonus, PoiBonus, LibpostalCoverage float64
+	}{
+		Ward: 0.35, District: 0.25, Province: 0.15,
+		StructuralBonus: 0.10, RoadcodeBonus: 0.07, PoiBonus: 0.05, LibpostalCoverage: 0.03,
+	}
+
+	score := w.Ward*parts.SimWard + w.District*parts.SimDistrict + w.Province*parts.SimProvince +
+		w.StructuralBonus*parts.Structural + w.RoadcodeBonus*parts.RoadBonus + w.PoiBonus*parts.PoiBonus + w.LibpostalCoverage*parts.LPCoverage
+
+	// clamp 0..1
+	if score < 0 {
+		score = 0
+	}
+	if score > 1 {
+		score = 1
+	}
+	return score, parts
+}
+
+// sim tính similarity giữa 2 string
+func sim(a, b string) float64 {
+	if a == "" || b == "" {
+		return 0
+	}
+	a = strings.ToLower(a)
+	b = strings.ToLower(b)
+	j := smetrics.JaroWinkler(a, b, 0.7, 4)
+	ld := levenshtein.ComputeDistance(a, b)
+	den := float64(max(len(a), len(b)))
+	lev := 1.0 - float64(ld)/den
+	return 0.7*j + 0.3*lev // hardcode weights tạm thời
+}
+
+// max helper function
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+// MatchLevelHeuristic heuristic: normalized vs canonical gần-dấu
+func MatchLevelHeuristic(normalizedNoDia, canonical string) string {
+	n := strings.ToLower(normalizedNoDia)
+	c := strings.ToLower(canonical)
+	if n == c {
+		return "ascii_exact"
+	}
+	return "fuzzy"
+}

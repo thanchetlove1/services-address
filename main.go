@@ -40,12 +40,16 @@ func main() {
 
 	// 4. Khởi tạo Meilisearch
 	searchConfig := search.SearchConfig{
-		Host:          getEnv("MEILI_URL", "http://localhost:7700"),
-		APIKey:        getEnv("MEILI_MASTER_KEY", "masterKey"),
+		Host:          viper.GetString("meilisearch.url"),
+		APIKey:        viper.GetString("meilisearch.master_key"),
 		IndexName:     "admin_units",
 		Timeout:       30 * time.Second,
 		MaxCandidates: 20,
 	}
+
+	logger.Info("Meilisearch config", 
+		zap.String("host", searchConfig.Host),
+		zap.String("key", searchConfig.APIKey[:10]+"..."))  // Log only first 10 chars for security
 
 	gazetteerSearcher, err := search.NewGazetteerSearcher(searchConfig, logger)
 	if err != nil {
@@ -119,8 +123,8 @@ func loadConfig() {
 	// Set defaults
 	viper.SetDefault("app.port", "8080")
 	viper.SetDefault("app.env", "development")
-	viper.SetDefault("meili.url", "http://localhost:7700")
-	viper.SetDefault("meili.master_key", "masterKey")
+	viper.SetDefault("meilisearch.url", "http://meili:7700")
+	viper.SetDefault("meilisearch.master_key", "5pAVWqmP046jvNzQwD70n8b5AdEyhW3lwWUZ1g5CZ8k")
 	viper.SetDefault("mongo.url", "mongodb://localhost:27017/address_parser")
 	viper.SetDefault("cache.l1_size", 10000)
 

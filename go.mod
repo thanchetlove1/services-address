@@ -8,6 +8,7 @@ require (
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/meilisearch/meilisearch-go v0.30.0
 	github.com/mozillazg/go-unidecode v0.2.0
+	github.com/openvenues/gopostal v0.0.0-20240426055609-4fe3a773f519
 	github.com/redis/go-redis/v9 v9.12.0
 	github.com/spf13/viper v1.17.0
 	github.com/xrash/smetrics v0.0.0-20201216005158-039620a65673

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/address-parser/app/config"
 	"github.com/address-parser/app/controllers"
 	"github.com/address-parser/app/services"
 	"github.com/address-parser/internal/normalizer"
@@ -20,6 +21,11 @@ import (
 )
 
 func main() {
+	// Load configuration
+	if err := config.Load("config/parser.yaml"); err != nil {
+		panic(err)
+	}
+
 	// Initialize logger
 	logger, _ := zap.NewProduction()
 	defer logger.Sync()

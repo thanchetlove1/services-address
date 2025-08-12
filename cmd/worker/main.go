@@ -6,9 +6,16 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+
+	"github.com/address-parser/app/config"
 )
 
 func main() {
+	// Load configuration
+	if err := config.Load("config/parser.yaml"); err != nil {
+		panic(err)
+	}
+
 	log.Println("Starting Address Parser Worker...")
 	
 	// TODO: Implement worker logic for batch processing
