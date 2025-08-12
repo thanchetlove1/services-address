@@ -18,7 +18,7 @@ import (
 // AddressService service xử lý logic parse địa chỉ
 type AddressService struct {
 	parser     *parser.AddressParser
-	normalizer *normalizer.TextNormalizerV2
+	normalizer *normalizer.TextNormalizer
 	searcher   *search.GazetteerSearcher
 	logger     *zap.Logger
 	startTime  time.Time
@@ -43,7 +43,7 @@ type JobStatus struct {
 }
 
 // NewAddressService tạo mới AddressService
-func NewAddressService(parser *parser.AddressParser, normalizer *normalizer.TextNormalizerV2, searcher *search.GazetteerSearcher, logger *zap.Logger) *AddressService {
+func NewAddressService(parser *parser.AddressParser, normalizer *normalizer.TextNormalizer, searcher *search.GazetteerSearcher, logger *zap.Logger) *AddressService {
 	return &AddressService{
 		parser:     parser,
 		normalizer: normalizer,
@@ -82,13 +82,13 @@ func (as *AddressService) ParseSingle(rawAddress string, options requests.ParseO
 	gazetteerVersion := "1.0.0" // TODO: get from config
 	
 	// Step 1: Normalize input
-	normResult := as.normalizer.NormalizeAddress(rawAddress)
-	if normResult == nil {
+	normalized, _ := as.normalizer.NormalizeAddress(rawAddress)
+	if normalized == "" {
 		return nil, errors.New("lỗi normalize địa chỉ")
 	}
 	
 	// Step 2: Extract province keywords and search for candidates
-	provinceKeywords := as.extractProvinceKeywords(normResult.NormalizedNoDiacritics)
+	provinceKeywords := as.extractProvinceKeywords(normalized)
 	as.logger.Info("Extracted province keywords", zap.Strings("keywords", provinceKeywords))
 	
 	// Search for province candidates using first keyword
@@ -113,16 +113,25 @@ func (as *AddressService) ParseSingle(rawAddress string, options requests.ParseO
 	// Step 3: Try each province candidate
 	for _, provCandidate := range provCandidates {
 		// Extract district keywords
-		districtKeywords := as.extractDistrictKeywords(normResult.NormalizedNoDiacritics)
+		districtKeywords := as.extractDistrictKeywords(normalized)
 		as.logger.Info("Extracted district keywords", zap.Strings("keywords", districtKeywords))
 		
 		// Search for districts in this province
 		var distCandidates []search.AdminUnitDoc
+		as.logger.Info("Searching for districts", 
+			zap.Strings("keywords", districtKeywords),
+			zap.String("province_id", provCandidate.AdminID))
+		
 		for _, keyword := range districtKeywords {
+			as.logger.Info("Searching district with keyword", zap.String("keyword", keyword))
 			candidates, err := as.searcher.SearchByLevel(ctx, keyword, 3, provCandidate.AdminID, 5) // level 3 = district
 			if err != nil {
+				as.logger.Warn("District search failed", zap.String("keyword", keyword), zap.Error(err))
 				continue
 			}
+			as.logger.Info("Found district candidates for keyword", 
+				zap.String("keyword", keyword), 
+				zap.Int("count", len(candidates)))
 			distCandidates = append(distCandidates, candidates...)
 		}
 		
@@ -134,7 +143,7 @@ func (as *AddressService) ParseSingle(rawAddress string, options requests.ParseO
 		
 		for _, distCandidate := range distCandidates {
 			// Extract ward keywords
-			wardKeywords := as.extractWardKeywords(normResult.NormalizedNoDiacritics)
+			wardKeywords := as.extractWardKeywords(normalized)
 			as.logger.Info("Extracted ward keywords", zap.Strings("keywords", wardKeywords))
 			
 			// Search for wards in this district
@@ -152,14 +161,14 @@ func (as *AddressService) ParseSingle(rawAddress string, options requests.ParseO
 			if len(wardCandidates) > 0 {
 				// Build result with ward (perfect match)
 				for _, wardCandidate := range wardCandidates {
-					result := as.buildAddressResult(rawAddress, normResult, provCandidate, distCandidate, &wardCandidate, gazetteerVersion)
+					result := as.buildAddressResult(rawAddress, normalized, provCandidate, distCandidate, &wardCandidate, gazetteerVersion)
 					result.Confidence = 1.0
 					result.Status = models.StatusMatched
 					return result, nil
 				}
 			} else {
 				// Build result without ward (district-level match)
-				result := as.buildAddressResult(rawAddress, normResult, provCandidate, distCandidate, nil, gazetteerVersion)
+				result := as.buildAddressResult(rawAddress, normalized, provCandidate, distCandidate, nil, gazetteerVersion)
 				result.Confidence = 0.8
 				result.Status = models.StatusAmbiguous
 				if bestScore < 0.8 {
@@ -176,21 +185,21 @@ func (as *AddressService) ParseSingle(rawAddress string, options requests.ParseO
 	}
 	
 	// No matches found - return fallback result
-	result := as.buildAddressResult(rawAddress, normResult, search.AdminUnitDoc{}, search.AdminUnitDoc{}, nil, gazetteerVersion)
+	result := as.buildAddressResult(rawAddress, normalized, search.AdminUnitDoc{}, search.AdminUnitDoc{}, nil, gazetteerVersion)
 	result.Status = models.StatusNeedsReview
 	result.Confidence = 0.0
 	return result, nil
 }
 
 // buildAddressResult builds a complete AddressResult from components
-func (as *AddressService) buildAddressResult(rawAddress string, normResult *normalizer.NormalizationResult, 
+func (as *AddressService) buildAddressResult(rawAddress string, normalized string, 
 	province search.AdminUnitDoc, district search.AdminUnitDoc, ward *search.AdminUnitDoc, 
 	gazetteerVersion string) *models.AddressResult {
 	
 	result := &models.AddressResult{
 		Raw:                     rawAddress,
-		NormalizedNoDiacritics: normResult.NormalizedNoDiacritics,
-		RawFingerprint:         normResult.Fingerprint,
+		NormalizedNoDiacritics: normalized,
+		RawFingerprint:         "", // TODO: generate fingerprint
 		Components:             models.AddressComponents{},
 		Quality:                models.QualityInfo{},
 		AdminPath:              []string{},
@@ -480,6 +489,10 @@ func (as *AddressService) extractDistrictKeywords(normalized string) []string {
 	words := strings.Fields(normalized)
 	var keywords []string
 	
+	as.logger.Info("Debug district extraction", 
+		zap.String("normalized", normalized),
+		zap.Strings("words", words))
+	
 	// Look for "quan X" or "huyen X" patterns
 	for i, word := range words {
 		if word == "quan" && i+1 < len(words) {
@@ -642,13 +655,13 @@ func (as *AddressService) extractWardKeywords(normalized string) []string {
 }
 
 // buildResult builds AddressResult từ matched components
-func (as *AddressService) buildResult(raw string, normResult *normalizer.NormalizationResult, 
+func (as *AddressService) buildResult(raw string, normalized string, 
 	prov, dist, ward *search.AdminUnitDoc, gazetteerVersion string) *models.AddressResult {
 	
 	result := &models.AddressResult{
 		Raw:                    raw,
-		NormalizedNoDiacritics: normResult.NormalizedNoDiacritics,
-		RawFingerprint:         normResult.Fingerprint,
+		NormalizedNoDiacritics: normalized,
+		RawFingerprint:         "", // TODO: generate fingerprint
 		Components:             models.AddressComponents{},
 		AdminPath:              []string{},
 		Candidates:             []models.Candidate{},
@@ -706,11 +719,11 @@ func (as *AddressService) buildResult(raw string, normResult *normalizer.Normali
 }
 
 // buildUnmatchedResult builds result for unmatched address
-func (as *AddressService) buildUnmatchedResult(raw string, normResult *normalizer.NormalizationResult, gazetteerVersion string) *models.AddressResult {
+func (as *AddressService) buildUnmatchedResult(raw string, normalized string, gazetteerVersion string) *models.AddressResult {
 	return &models.AddressResult{
 		Raw:                    raw,
-		NormalizedNoDiacritics: normResult.NormalizedNoDiacritics,
-		RawFingerprint:         normResult.Fingerprint,
+		NormalizedNoDiacritics: normalized,
+		RawFingerprint:         "", // TODO: generate fingerprint
 		Confidence:             0.0,
 		Status:                 "unmatched",
 		CanonicalText:          "",

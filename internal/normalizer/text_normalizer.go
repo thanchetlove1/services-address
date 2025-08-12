@@ -200,10 +200,10 @@ func (tn *TextNormalizer) initializeMaps() {
 // NormalizeAddress chuẩn hóa địa chỉ using V2 implementation
 func (tn *TextNormalizer) NormalizeAddress(rawAddress string) (string, string) {
 	// Use V2 normalizer for complete implementation
-	normalizerV2 := NewTextNormalizerV2()
-	result := normalizerV2.NormalizeAddress(rawAddress)
+	normalizerV2 := NewTextNormalizer()
+	normalized, signals := normalizerV2.NormalizeAddress(rawAddress)
 	
-	return result.OriginalCleaned, result.NormalizedNoDiacritics
+	return normalized, signals
 }
 
 // removeNoise loại bỏ noise phi-địa-chỉ

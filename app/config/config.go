@@ -8,19 +8,14 @@ import (
 )
 
 type ScoringWeights struct {
-	Ward           float64 `yaml:"ward" json:"ward"`
-	District       float64 `yaml:"district" json:"district"`
-	Province       float64 `yaml:"province" json:"province"`
-	StructuralBonus float64 `yaml:"structural_bonus" json:"structural_bonus"`
-	RoadcodeBonus   float64 `yaml:"roadcode_bonus" json:"roadcode_bonus"`
-	PoiBonus        float64 `yaml:"poi_bonus" json:"poi_bonus"`
-	LibpostalCoverage float64 `yaml:"libpostal_coverage" json:"libpostal_coverage"`
+	Ward, District, Province       float64 `yaml:"ward" json:"ward"`
+	StructuralBonus, RoadcodeBonus float64 `yaml:"structural_bonus" json:"structural_bonus"`
+	PoiBonus, LibpostalCoverage    float64 `yaml:"poi_bonus" json:"poi_bonus"`
 }
 
 type Thresholds struct {
 	High      float64 `yaml:"high" json:"high"`
 	ReviewLow float64 `yaml:"review_low" json:"review_low"`
-	// ReviewHigh không bắt buộc; nếu muốn dùng, thêm vào YAML và struct này
 }
 
 type ConfidenceWeights struct {
@@ -59,15 +54,14 @@ func Load(path string) error {
 	if err := yaml.Unmarshal(b, &C); err != nil {
 		return err
 	}
-	// ENV override
-	if v := os.Getenv("USE_LIBPOSTAL"); v == "0" {
+	// ENV overrides
+	switch os.Getenv("USE_LIBPOSTAL") {
+	case "0":
 		C.UseLibpostal = false
-	}
-	if v := os.Getenv("USE_LIBPOSTAL"); v == "1" {
+	case "1":
 		C.UseLibpostal = true
 	}
 	return nil
 }
 
-// Timeout parse đơn lẻ
 func RequestTimeout() time.Duration { return 1500 * time.Millisecond }

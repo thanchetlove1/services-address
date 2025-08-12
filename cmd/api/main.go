@@ -44,12 +44,12 @@ func main() {
 	}()
 
 	// Initialize services
-	normalizerService := normalizer.NewTextNormalizerV2()
+	normalizerService := normalizer.NewTextNormalizer()
 	
-	// Initialize search components (temporarily without Meilisearch for MVP)
+	// Initialize search components with Meilisearch
 	searchConfig := search.SearchConfig{
 		Host:          "http://localhost:7700",
-		APIKey:        "",
+		APIKey:        "5pAVWqmP046jvNzQwD70n8b5AdEyhW3lwWUZ1g5CZ8k",
 		IndexName:     "admin_units",
 		Timeout:       30 * time.Second,
 		MaxCandidates: 100,

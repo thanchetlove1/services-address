@@ -1,0 +1,191 @@
+*** Begin Patch
+*** Update File: internal/parser/address_matcher.go
+@@
+ 	"crypto/sha256"
+ 	"encoding/hex"
+ 	"fmt"
+ 	"regexp"
++	"sort"
+ 	"strings"
+ 	"time"
+@@
+ 	// 4) Chấm điểm VN-aware và xếp hạng
+ 	cands := make([]models.Candidate, 0, len(paths))
+ 	bestScore := -1.0
+ 	for _, p := range paths {
+ 		score, _ := am.scorePath(normalized, p, sig, 0 /* lpCov, nếu tích hợp libpostal thì đưa vào */)
+ 		// candidate ở dạng AdminUnits: [Ward, District, Province]
+ 		c := models.Candidate{
+ 			AdminUnits: []models.AdminUnit{p.Ward, p.District, p.Province},
+ 			Score:      score,
+ 		}
+ 		cands = append(cands, c)
+ 		if score > bestScore {
+ 			bestScore = score
+ 		}
+ 	}
++	// 4.1) Khử trùng lặp path theo chuỗi AdminID
++	if len(cands) > 1 {
++		seen := make(map[string]bool, len(cands))
++		dedup := cands[:0]
++		for _, c := range cands {
++			ids := make([]string, 0, len(c.AdminUnits))
++			for _, u := range c.AdminUnits {
++				ids = append(ids, u.AdminID)
++			}
++			key := strings.Join(ids, ">")
++			if !seen[key] {
++				seen[key] = true
++				dedup = append(dedup, c)
++			}
++		}
++		cands = dedup
++	}
+ 	sort.Slice(cands, func(i, j int) bool { return cands[i].Score > cands[j].Score })
+@@
+ 	// 6) Lấy best & canonicalize
+ 	if len(cands) > 0 {
+ 		best := cands[0]
+ 		res.Confidence = best.Score
+ 		res.AdminPath = am.buildAdminPath(best.AdminUnits)
+ 
+ 		// Components từ patterns
+ 		res.Components = am.extractComponents(patterns, res.AdminPath)
++		// Điền components hành chính từ path tốt nhất
++		am.fillAdminComponentsFromPath(&res.Components, best.AdminUnits)
+ 
+-		// Canonical text (có thể mở rộng thêm house/street khi patterns nhận diện đầy đủ)
+-		res.CanonicalText = am.buildCanonicalText(res.Components, best.AdminUnits)
++		// Lấy street từ patterns (nếu có) và build canonical
++		street := am.streetFromPatterns(patterns)
++		res.CanonicalText = am.buildCanonicalText(res.Components, best.AdminUnits, street)
+ 
+ 		// MatchStrategy heuristic (không quyết định final score)
+ 		res.MatchStrategy = am.inferStrategyFromScore(best.Score)
+ 
+ 		// MatchLevel từ normalized vs canonical (không dấu)
+ 		res.Quality.MatchLevel = string(am.matchLevelHeuristic(res.NormalizedNoDiacritics, res.CanonicalText))
+ 	} else {
+ 		// no candidates
+ 		res.Confidence = 0
+ 		res.Status = "unmatched"
+ 	}
+@@
+ func (am *AddressMatcher) buildCanonicalText(components models.AddressComponents, units []models.AdminUnit) string {
+-	parts := []string{}
+-	// nếu có house/street thì thêm vào trước
+-	house := ""
+-	if components.House.Number != nil {
+-		house = *components.House.Number
+-	}
+-	// nếu bạn có lưu street trong components, thêm vào:
+-	// street := components.Street
+-	left := strings.TrimSpace(strings.Join([]string{house /*, street*/}, " "))
+-	if left != "" {
+-		parts = append(parts, left)
+-	}
+-	for _, u := range units {
+-		parts = append(parts, u.Name)
+-	}
+-	parts = append(parts, "Việt Nam")
+-	return strings.Join(parts, ", ")
++	parts := []string{}
++	// house + street (street lấy từ patterns, không đụng model)
++	house := ""
++	if components.House.Number != nil {
++		house = *components.House.Number
++	}
++	// street truyền qua tham số
++	return strings.Join(parts, ", ")
+ }
+ 
+ func (am *AddressMatcher) calculateResidual(normalized string, patterns []normalizer.PatternResult) string {
+ 	residual := normalized
+ 	for _, p := range patterns {
+@@
+ 	return out
+ }
+ 
+ // ===== Flags / Status / Strategy / Level =====
+@@
+ func (am *AddressMatcher) determineStatus(result *MatchResult) {
+-	if result.Confidence >= am.thresholdHigh {
+-		result.Status = "matched"
+-	} else if result.Confidence >= am.thresholdMedium {
+-		result.Status = "ambiguous"
+-	} else {
+-		result.Status = "needs_review"
+-	}
+-
+-	if len(result.Candidates) == 0 {
+-		result.Status = "unmatched"
+-	}
++	switch {
++	case result.Confidence >= am.thresholdHigh:
++		result.Status = "matched"
++	case result.Confidence >= am.thresholdMedium:
++		result.Status = "needs_review"
++	default:
++		result.Status = "unmatched"
++	}
++	if len(result.Candidates) == 0 {
++		result.Status = "unmatched"
++	}
+ }
+@@
+ func (am *AddressMatcher) generateFingerprint(normalized, gazetteerVersion string) string {
+ 	sum := sha256.Sum256([]byte(normalized + "\x1F" + gazetteerVersion))
+ 	return "sha256:" + hex.EncodeToString(sum[:])
+ }
+ 
++// ===== NEW: điền components hành chính từ path =====
++func (am *AddressMatcher) fillAdminComponentsFromPath(comp *models.AddressComponents, units []models.AdminUnit) {
++	for _, u := range units {
++		ref := models.AdminUnitRef{ID: u.AdminID, Name: u.Name, AdminSubtype: u.AdminSubtype}
++		switch u.AdminSubtype {
++		case "ward", "commune", "township":
++			comp.Ward = &ref
++		case "urban_district", "rural_district", "city_under_province":
++			comp.District = &ref
++		case "municipality":
++			comp.City = &ref
++		case "province":
++			comp.Province = &ref
++		}
++	}
++	if comp.Country == nil {
++		comp.Country = &models.AdminUnitRef{ID: "84", Name: "Việt Nam", AdminSubtype: "country"}
++	}
++}
++
++// ===== NEW: lấy street từ patterns (nếu extractor đã trả ra) =====
++func (am *AddressMatcher) streetFromPatterns(patterns []normalizer.PatternResult) string {
++	for _, p := range patterns {
++		if p.Type == "STREET" || p.Type == "STREET_NAME" {
++			return strings.TrimSpace(p.Value)
++		}
++	}
++	return ""
++}
++
++// ===== MODIFIED: buildCanonicalText nhận thêm street =====
++func (am *AddressMatcher) buildCanonicalText(components models.AddressComponents, units []models.AdminUnit, street string) string {
++	parts := []string{}
++	left := []string{}
++	if components.House.Number != nil {
++		left = append(left, *components.House.Number)
++	}
++	if street != "" {
++		left = append(left, street)
++	}
++	if s := strings.TrimSpace(strings.Join(left, " ")); s != "" {
++		parts = append(parts, s)
++	}
++	for _, u := range units {
++		parts = append(parts, u.Name)
++	}
++	parts = append(parts, "Việt Nam")
++	return strings.Join(parts, ", ")
++}
++
+*** End Patch

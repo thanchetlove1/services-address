@@ -14,12 +14,12 @@ import (
 // AddressParser parser địa chỉ chính
 type AddressParser struct {
 	matcher    *AddressMatcher
-	normalizer *normalizer.TextNormalizerV2
+	normalizer *normalizer.TextNormalizer
 	logger     *zap.Logger
 }
 
 // NewAddressParser tạo mới AddressParser
-func NewAddressParser(searcher *search.GazetteerSearcher, normalizer *normalizer.TextNormalizerV2, logger *zap.Logger) *AddressParser {
+func NewAddressParser(searcher *search.GazetteerSearcher, normalizer *normalizer.TextNormalizer, logger *zap.Logger) *AddressParser {
 	matcher := NewAddressMatcher(searcher, normalizer, logger)
 	
 	return &AddressParser{
@@ -172,7 +172,7 @@ func ParseOnce(ctx context.Context, deps ParseDeps, raw string) (*Result, error)
 	var best *search.CandidatePath
 	bestScore := -1.0
 	for i := range paths {
-		s, _ := ScorePath(norm, paths[i], sig, lpCov)
+		s, _ := scorePath(norm, paths[i], sig, lpCov)
 		if s > bestScore {
 			cp := paths[i]
 			best = &cp
@@ -254,3 +254,48 @@ func (ap *AddressParser) CalculateConfidence(components models.AddressComponents
 	
 	return matchQuality
 }
+
+// scorePath tính score cho một path candidate
+func scorePath(norm string, path search.CandidatePath, sig normalizer.Signals, lpCov float64) (float64, ScoreParts) {
+	wTok, dTok, pTok := normalizer.ExtractAdminTokens(norm)
+
+	parts := ScoreParts{
+		SimWard:    sim(wTok, path.Ward.Name),
+		SimDistrict: sim(dTok, path.District.Name),
+		SimProvince: sim(pTok, path.Province.Name),
+		Structural:  1.0,
+		LPCoverage:  lpCov,
+	}
+
+	// road bonus: có QL/DT/TL/HL/DH trong path
+	if sig.RoadType != "" && strings.Contains(strings.ToLower(path.Ward.PathNormalized), strings.ToLower(sig.RoadType+sig.RoadCode)) {
+		parts.RoadBonus = 1.0
+	}
+
+	// POI bonus (nếu có)
+	if sig.POI != "" && strings.Contains(strings.ToLower(path.Ward.PathNormalized), strings.ToLower(sig.POI)) {
+		parts.PoiBonus = 1.0
+	}
+
+	// TODO: Import config package để sử dụng weights
+	w := struct {
+		Ward, District, Province, StructuralBonus, RoadcodeBonus, PoiBonus, LibpostalCoverage float64
+	}{
+		Ward: 0.35, District: 0.25, Province: 0.15,
+		StructuralBonus: 0.10, RoadcodeBonus: 0.07, PoiBonus: 0.05, LibpostalCoverage: 0.03,
+	}
+
+	score := w.Ward*parts.SimWard + w.District*parts.SimDistrict + w.Province*parts.SimProvince +
+		w.StructuralBonus*parts.Structural + w.RoadcodeBonus*parts.RoadBonus + w.PoiBonus*parts.PoiBonus + w.LibpostalCoverage*parts.LPCoverage
+
+	// clamp 0..1
+	if score < 0 {
+		score = 0
+	}
+	if score > 1 {
+		score = 1
+	}
+	return score, parts
+}
+
+
