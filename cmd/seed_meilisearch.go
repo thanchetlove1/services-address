@@ -50,7 +50,7 @@ func main() {
 	// Set index settings
 	fmt.Println("Đang cấu hình Meilisearch index settings...")
 	settings := &meilisearch.Settings{
-		SearchableAttributes: []string{"name", "normalized_name", "aliases"},
+		SearchableAttributes: []string{"name", "normalized_name", "aliases", "path"},
 		FilterableAttributes: []string{"level", "parent_id", "admin_id", "path", "admin_subtype"},
 		SortableAttributes:   []string{"level", "name"},
 		RankingRules: []string{
@@ -61,6 +61,19 @@ func main() {
 			"sort",
 			"exactness",
 		},
+		Synonyms: map[string][]string{
+			"q": {"quan"},
+			"quan": {"q"},
+			"p": {"phuong"},
+			"phuong": {"p"},
+			"tp": {"thanh pho"},
+			"thanh pho": {"tp"},
+			"hn": {"ha noi", "hanoi"},
+			"hcm": {"ho chi minh", "sai gon", "saigon"},
+			"tp hcm": {"thanh pho ho chi minh", "tphcm", "ho chi minh", "hcm"},
+			"tp hn": {"thanh pho ha noi", "ha noi", "hn"},
+		},
+		StopWords: []string{"cua", "o", "tai", "trong", "va", "của", "ở", "tại", "trong", "và"},
 	}
 
 	task, err := index.UpdateSettings(settings)

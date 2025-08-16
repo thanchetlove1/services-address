@@ -1,5 +1,6 @@
 # Docker data volumes  
-../docker/data/
+docker/data/
+
 
 # Go build artifacts
 *.exe
@@ -57,3 +58,6 @@ dist/
 # Cache
 *.cache
 .cache/
+
+libpostal-base-with-data.tar.gz
+address-parser.zip

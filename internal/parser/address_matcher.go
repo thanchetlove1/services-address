@@ -58,7 +58,7 @@ const (
 
 type AddressMatcher struct {
 	searcher   *search.GazetteerSearcher
-	normalizer *normalizer.TextNormalizerV2
+	normalizer *normalizer.TextNormalizer
 	extractor  *normalizer.PatternExtractor
 	logger     *zap.Logger
 
@@ -67,7 +67,7 @@ type AddressMatcher struct {
 	maxCandidates   int
 }
 
-func NewAddressMatcher(searcher *search.GazetteerSearcher, textNormalizer *normalizer.TextNormalizerV2, logger *zap.Logger) *AddressMatcher {
+func NewAddressMatcher(searcher *search.GazetteerSearcher, textNormalizer *normalizer.TextNormalizer, logger *zap.Logger) *AddressMatcher {
 	thHigh := 0.90
 	thMed := 0.60
 	if config.C.Thresholds.High > 0 {
@@ -217,17 +217,17 @@ func (am *AddressMatcher) buildCandidatePaths(ctx context.Context, norm string) 
 	paths := []pathCandidate{}
 
 	provFilter := `admin_subtype IN ["province","municipality"]`
-	provinces, _, err := am.searcher.SearchWithFilter(norm, provFilter, 10)
+	provinces, _, err := am.searcher.SearchWithFilter(ctx, norm, provFilter, 10)
 	if err != nil {
 		return nil, err
 	}
 	distFilter := `admin_subtype IN ["urban_district","rural_district","city_under_province"]`
-	districts, _, err := am.searcher.SearchWithFilter(norm, distFilter, 20)
+	districts, _, err := am.searcher.SearchWithFilter(ctx, norm, distFilter, 20)
 	if err != nil {
 		return nil, err
 	}
 	wardFilter := `admin_subtype IN ["ward","commune","township"]`
-	wards, _, err := am.searcher.SearchWithFilter(norm, wardFilter, 30)
+	wards, _, err := am.searcher.SearchWithFilter(ctx, norm, wardFilter, 30)
 	if err != nil {
 		return nil, err
 	}

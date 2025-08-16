@@ -1,45 +1,54 @@
-# Build stage
-FROM golang:1.21-alpine AS builder
+# Stage 1: Build Go application (sử dụng pre-built libpostal)
+FROM golang:1.21-bullseye AS builder
 
-# Install git and ca-certificates
-RUN apk add --no-cache git ca-certificates
+# Install CGO dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc pkg-config \
+ && rm -rf /var/lib/apt/lists/*
 
-# Set working directory
+# Copy libpostal từ pre-built image
+COPY --from=libpostal-base:latest /usr/local/lib/libpostal* /usr/local/lib/
+COPY --from=libpostal-base:latest /usr/local/include/libpostal/ /usr/local/include/libpostal/
+COPY --from=libpostal-base:latest /usr/local/lib/pkgconfig/libpostal.pc /usr/local/lib/pkgconfig/
+
+# Update library cache
+RUN ldconfig
+
 WORKDIR /app
-
-# Copy go mod files
 COPY go.mod go.sum ./
-
-# Download dependencies
 RUN go mod download
 
-# Copy source code
+# copy source
 COPY . .
 
-# Build the application
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main ./cmd/api
+# build binary với CGO cho libpostal
+RUN CGO_ENABLED=1 GOOS=linux go build -ldflags="-s -w" -a -o main ./cmd/api
 
-# Runtime stage
-FROM alpine:latest
+# Stage 2: Runtime image
+FROM debian:bullseye-slim
 
-# Install ca-certificates for HTTPS requests
-RUN apk --no-cache add ca-certificates wget
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates wget \
+ && rm -rf /var/lib/apt/lists/*
 
-# Create app directory
+# Copy libpostal libraries và data từ pre-built image
+COPY --from=libpostal-base:latest /usr/local/lib/libpostal* /usr/local/lib/
+COPY --from=libpostal-base:latest /usr/local/include/libpostal/ /usr/local/include/libpostal/
+COPY --from=libpostal-base:latest /usr/local/share/libpostal/ /usr/local/share/libpostal/
+
+# Set LIBPOSTAL_DATA_DIR environment variable
+ENV LIBPOSTAL_DATA_DIR=/usr/local/share/libpostal
+
+# update ld cache
+RUN ldconfig
+
 WORKDIR /root/
-
-# Copy the binary from builder stage
 COPY --from=builder /app/main .
-
-# Copy config files if any
 COPY --from=builder /app/config ./config
 
-# Expose port
 EXPOSE 8080
 
-# Add health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
   CMD wget --no-verbose --tries=1 --spider http://localhost:8080/health || exit 1
 
-# Run the application
 CMD ["./main"]

@@ -18,6 +18,9 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.uber.org/zap"
+
+	// Import để trigger libpostal init()
+	_ "github.com/address-parser/internal/external"
 )
 
 func main() {
@@ -44,11 +47,16 @@ func main() {
 	}()
 
 	// Initialize services
-	normalizerService := normalizer.NewTextNormalizerV2()
+	normalizerService := normalizer.NewTextNormalizer()
 	
 	// Initialize search components with Meilisearch
+	meilisearchURL := os.Getenv("MEILISEARCH_URL")
+	if meilisearchURL == "" {
+		meilisearchURL = "http://localhost:7700"
+	}
+	
 	searchConfig := search.SearchConfig{
-		Host:          "http://localhost:7700",
+		Host:          meilisearchURL,
 		APIKey:        "5pAVWqmP046jvNzQwD70n8b5AdEyhW3lwWUZ1g5CZ8k",
 		IndexName:     "admin_units",
 		Timeout:       30 * time.Second,

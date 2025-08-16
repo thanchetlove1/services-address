@@ -5,7 +5,9 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/address-parser/app/config"
 	"github.com/address-parser/app/models"
+	"github.com/address-parser/internal/external"
 	"github.com/address-parser/internal/normalizer"
 	"github.com/address-parser/internal/search"
 	"go.uber.org/zap"
@@ -13,19 +15,21 @@ import (
 
 // AddressParser parser địa chỉ chính
 type AddressParser struct {
-	matcher    *AddressMatcher
-	normalizer *normalizer.TextNormalizerV2
-	logger     *zap.Logger
+	matcher      *AddressMatcher
+	normalizer   *normalizer.TextNormalizer
+	logger       *zap.Logger
+	useLibpostal bool
 }
 
 // NewAddressParser tạo mới AddressParser
-func NewAddressParser(searcher *search.GazetteerSearcher, normalizer *normalizer.TextNormalizerV2, logger *zap.Logger) *AddressParser {
+func NewAddressParser(searcher *search.GazetteerSearcher, normalizer *normalizer.TextNormalizer, logger *zap.Logger) *AddressParser {
 	matcher := NewAddressMatcher(searcher, normalizer, logger)
 	
 	return &AddressParser{
-		matcher:    matcher,
-		normalizer: normalizer,
-		logger:     logger,
+		matcher:      matcher,
+		normalizer:   normalizer,
+		logger:       logger,
+		useLibpostal: config.C.UseLibpostal,
 	}
 }
 
@@ -161,9 +165,16 @@ type Result struct {
 func ParseOnce(ctx context.Context, deps ParseDeps, raw string) (*Result, error) {
 	norm, sig := normalizer.Normalize(raw)
 
-	// Libpostal optional
+	// Libpostal optional - sử dụng nếu được enable
 	lpCov := 0.0
-	// TODO: Import config và external packages để sử dụng libpostal
+	if config.C.UseLibpostal {
+		lpResult := external.ExtractWithLibpostal(raw)
+		lpCov = lpResult.Coverage
+		// Log kết quả libpostal để debug
+		if lpCov > 0 {
+			// Có thể log hoặc sử dụng thông tin từ libpostal để cải thiện parsing
+		}
+	}
 
 	paths, _, _, _, err := deps.FindCandidates(ctx, sig, norm)
 	if err != nil {
@@ -268,13 +279,19 @@ func scorePath(norm string, path search.CandidatePath, sig normalizer.Signals, l
 	}
 
 	// road bonus: có QL/DT/TL/HL/DH trong path
-	if sig.RoadType != "" && strings.Contains(strings.ToLower(path.Ward.PathNormalized), strings.ToLower(sig.RoadType+sig.RoadCode)) {
-		parts.RoadBonus = 1.0
+	if sig.RoadType != "" && len(path.Ward.PathNormalized) > 0 {
+		wardPathStr := strings.Join(path.Ward.PathNormalized, " ")
+		if strings.Contains(strings.ToLower(wardPathStr), strings.ToLower(sig.RoadType+sig.RoadCode)) {
+			parts.RoadBonus = 1.0
+		}
 	}
 
 	// POI bonus (nếu có)
-	if sig.POI != "" && strings.Contains(strings.ToLower(path.Ward.PathNormalized), strings.ToLower(sig.POI)) {
-		parts.PoiBonus = 1.0
+	if sig.POI != "" && len(path.Ward.PathNormalized) > 0 {
+		wardPathStr := strings.Join(path.Ward.PathNormalized, " ")
+		if strings.Contains(strings.ToLower(wardPathStr), strings.ToLower(sig.POI)) {
+			parts.PoiBonus = 1.0
+		}
 	}
 
 	// TODO: Import config package để sử dụng weights

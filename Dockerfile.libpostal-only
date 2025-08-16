@@ -1,0 +1,53 @@
+# Dockerfile để build chỉ libpostal base image
+FROM debian:bullseye-slim
+
+# Install build dependencies cho libpostal
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl autoconf automake libtool pkg-config build-essential git ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+
+# Build libpostal một lần duy nhất - let it use default paths
+RUN git clone --depth 1 https://github.com/openvenues/libpostal /tmp/libpostal && \
+    cd /tmp/libpostal && \
+    ./bootstrap.sh && \
+    ./configure --disable-data-download && \
+    make -j$(nproc) && \
+    make install && \
+    ldconfig && \
+    rm -rf /tmp/libpostal
+
+# v1.0.0
+# https://github.com/openvenues/libpostal/releases/download/v1.0.0/parser.tar.gz
+# https://github.com/openvenues/libpostal/releases/download/v1.0.0/language_classifier.tar.gz
+# https://github.com/openvenues/libpostal/releases/download/v1.0.0/libpostal_data.tar.gz
+
+# v1.1.0 (không chính thức)
+# https://public-read-libpostal-data.s3.amazonaws.com/v1.1.0/parser.tar.gz
+# https://public-read-libpostal-data.s3.amazonaws.com/v1.1.0/language_classifier.tar.gz
+# https://public-read-libpostal-data.s3.amazonaws.com/v1.1.0/libpostal_data.tar.gz
+# Download và extract libpostal data trực tiếp từ link
+RUN mkdir -p /usr/local/share/libpostal && \
+    cd /usr/local/share/libpostal && \
+    curl -L "https://public-read-libpostal-data.s3.amazonaws.com/v1.1.0/libpostal_data.tar.gz" -o libpostal_data.tar.gz && \
+    curl -L "https://public-read-libpostal-data.s3.amazonaws.com/v1.1.0/parser.tar.gz" -o parser.tar.gz && \
+    curl -L "https://public-read-libpostal-data.s3.amazonaws.com/v1.1.0/language_classifier.tar.gz" -o language_classifier.tar.gz && \
+    tar -xzf libpostal_data.tar.gz && \
+    tar -xzf parser.tar.gz && \
+    tar -xzf language_classifier.tar.gz && \
+    echo "v1" > data_version && \
+    rm -f *.tar.gz
+
+# Xóa các file .tar.gz để tiết kiệm space (data đã được extract sẵn)
+RUN cd /usr/local/share/libpostal && \
+    rm -f *.tar.gz && \
+    echo "Libpostal data copied and cleaned!" && \
+    ls -la /usr/local/share/libpostal/
+
+# Cleanup build dependencies to save space  
+RUN apt-get remove -y curl autoconf automake libtool pkg-config build-essential git && \
+    apt-get autoremove -y && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Set environment variable
+ENV LIBPOSTAL_DATA_DIR=/usr/local/share/libpostal

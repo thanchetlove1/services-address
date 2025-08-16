@@ -1,7 +1,5 @@
-version: '3.8'
-
 services:
-  # Address Parser Service (Golang)
+  # Address Parser S      - "./docker/data/libpostal:/usr/local/share/libpostal/libpostal:ro"rvice (Golang)
   app:
     build: .
     container_name: address_parser_service
@@ -10,9 +8,10 @@ services:
     environment:
       - APP_ENV=production
       - APP_PORT=8080
-      - MEILI_URL=http://meili:7700
+      - USE_LIBPOSTAL=true
+      - MEILISEARCH_URL=http://meili:7700
       - MEILI_MASTER_KEY=${MEILI_MASTER_KEY:-5pAVWqmP046jvNzQwD70n8b5AdEyhW3lwWUZ1g5CZ8k}
-      - MONGO_URL=mongodb://mongo:27017/address_parser
+      - MONGO_URI=mongodb://mongo:27017/address_parser
       - REDIS_URL=redis://redis:6379
       - LOG_LEVEL=info
       - BATCH_SIZE=64
@@ -20,6 +19,7 @@ services:
       - MEILI_MAX_INFLIGHT=128
       - MAX_QPS_PER_WORKER=50
       - L1_CACHE_SIZE=10000
+      - LIBPOSTAL_DATA_DIR=/usr/local/share/libpostal
     depends_on:
       - meili
       - mongo
@@ -27,20 +27,21 @@ services:
     restart: unless-stopped
     networks:
       - address_parser_net
+    # volumes removed - libpostal data is now baked into libpostal-base image
     deploy:
       resources:
         limits:
           cpus: '2.0'
-          memory: 4G
+          memory: 6G
         reservations:
           cpus: '1.0'
-          memory: 2G
+          memory: 3G
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 30s
+      start_period: 60s
     logging:
       driver: "json-file"
       options:

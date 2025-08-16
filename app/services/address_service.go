@@ -19,7 +19,7 @@ import (
 // AddressService service xử lý logic parse địa chỉ
 type AddressService struct {
 	parser     *parser.AddressParser
-	normalizer *normalizer.TextNormalizerV2
+	normalizer *normalizer.TextNormalizer
 	searcher   *search.GazetteerSearcher
 	logger     *zap.Logger
 	startTime  time.Time
@@ -44,7 +44,7 @@ type JobStatus struct {
 }
 
 // NewAddressService tạo mới AddressService
-func NewAddressService(parser *parser.AddressParser, normalizer *normalizer.TextNormalizerV2, searcher *search.GazetteerSearcher, logger *zap.Logger) *AddressService {
+func NewAddressService(parser *parser.AddressParser, normalizer *normalizer.TextNormalizer, searcher *search.GazetteerSearcher, logger *zap.Logger) *AddressService {
 	return &AddressService{
 		parser:     parser,
 		normalizer: normalizer,
@@ -285,12 +285,33 @@ func (as *AddressService) extractProvinceCandidates(ctx context.Context, normali
 	
 	// Tìm kiếm với từng keyword
 	for _, keyword := range provinceKeywords {
-		candidates, err := as.searcher.SearchByLevel(ctx, keyword, 2, "", 5) // level 2 = province
+		req := search.SearchRequest{
+			Query:    keyword,
+			Level:    2,
+			Context:  map[string]string{},
+			Limit:    5,
+			Timeout:  10 * time.Second,
+			UseCache: true,
+		}
+		candidates, err := as.searcher.SearchByLevel(ctx, req)
 		if err != nil {
 			as.logger.Warn("Error searching with keyword", zap.String("keyword", keyword), zap.Error(err))
 			continue
 		}
-		allCandidates = append(allCandidates, candidates...)
+		// Convert SearchResult.Candidates sang AdminUnitDoc
+		for _, candidate := range candidates.Candidates {
+			adminUnit := search.AdminUnitDoc{
+				AdminID:        candidate.ID,
+				ParentID:       &candidate.ParentID,
+				Level:          candidate.Level,
+				Name:           candidate.Name,
+				NormalizedName: candidate.Name, // TODO: add normalized_name field
+				AdminSubtype:   candidate.AdminSubtype,
+				Path:           candidate.Path,
+				PathNormalized: candidate.PathNormalized,
+			}
+			allCandidates = append(allCandidates, adminUnit)
+		}
 	}
 	
 	as.logger.Info("Found province candidates", zap.Int("count", len(allCandidates)))
@@ -352,12 +373,33 @@ func (as *AddressService) extractDistrictCandidates(ctx context.Context, normali
 	
 	// Tìm kiếm với từng keyword
 	for _, keyword := range districtKeywords {
-		candidates, err := as.searcher.SearchByLevel(ctx, keyword, 3, provinceID, 5) // level 3 = district
+		req := search.SearchRequest{
+			Query:    keyword,
+			Level:    3,
+			Context:  map[string]string{"parent_id": provinceID},
+			Limit:    5,
+			Timeout:  10 * time.Second,
+			UseCache: true,
+		}
+		candidates, err := as.searcher.SearchByLevel(ctx, req)
 		if err != nil {
 			as.logger.Warn("Error searching district with keyword", zap.String("keyword", keyword), zap.Error(err))
 			continue
 		}
-		allCandidates = append(allCandidates, candidates...)
+		// Convert SearchResult.Candidates sang AdminUnitDoc
+		for _, candidate := range candidates.Candidates {
+			adminUnit := search.AdminUnitDoc{
+				AdminID:        candidate.ID,
+				ParentID:       &candidate.ParentID,
+				Level:          candidate.Level,
+				Name:           candidate.Name,
+				NormalizedName: candidate.Name, // TODO: add normalized_name field
+				AdminSubtype:   candidate.AdminSubtype,
+				Path:           candidate.Path,
+				PathNormalized: candidate.PathNormalized,
+			}
+			allCandidates = append(allCandidates, adminUnit)
+		}
 	}
 	
 	as.logger.Info("Found district candidates", zap.Int("count", len(allCandidates)))
@@ -374,12 +416,33 @@ func (as *AddressService) extractWardCandidates(ctx context.Context, normalized,
 	
 	// Tìm kiếm với từng keyword
 	for _, keyword := range wardKeywords {
-		candidates, err := as.searcher.SearchByLevel(ctx, keyword, 4, districtID, 5) // level 4 = ward
+		req := search.SearchRequest{
+			Query:    keyword,
+			Level:    4,
+			Context:  map[string]string{"parent_id": districtID},
+			Limit:    5,
+			Timeout:  10 * time.Second,
+			UseCache: true,
+		}
+		candidates, err := as.searcher.SearchByLevel(ctx, req)
 		if err != nil {
 			as.logger.Warn("Error searching ward with keyword", zap.String("keyword", keyword), zap.Error(err))
 			continue
 		}
-		allCandidates = append(allCandidates, candidates...)
+		// Convert SearchResult.Candidates sang AdminUnitDoc
+		for _, candidate := range candidates.Candidates {
+			adminUnit := search.AdminUnitDoc{
+				AdminID:        candidate.ID,
+				ParentID:       &candidate.ParentID,
+				Level:          candidate.Level,
+				Name:           candidate.Name,
+				NormalizedName: candidate.Name, // TODO: add normalized_name field
+				AdminSubtype:   candidate.AdminSubtype,
+				Path:           candidate.Path,
+				PathNormalized: candidate.PathNormalized,
+			}
+			allCandidates = append(allCandidates, adminUnit)
+		}
 	}
 	
 	as.logger.Info("Found ward candidates", zap.Int("count", len(allCandidates)))

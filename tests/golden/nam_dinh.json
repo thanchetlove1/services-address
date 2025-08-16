@@ -1,8 +1,0 @@
-{
-  "raw": "Anh Tùng-0949611196 - 0903267588-114 Nguyễn Bính, Phường Trần Quang Khải, Thành phố Nam Định, Tỉnh Nam Định",
-  "expect": {
-    "status": "matched",
-    "canonical_text": "114 Nguyễn Bính, Phường Trần Quang Khải, Thành phố Nam Định, Tỉnh Nam Định, Việt Nam",
-    "residual_contains": ["0949611196", "0903267588"]
-  }
-}

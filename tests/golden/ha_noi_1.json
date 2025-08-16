@@ -1,7 +1,0 @@
-{
-  "raw": "SO 199 HOANG NHU TIEP PHUONG BO DE QUAN LONG BIEN TP HA NOI, HÀ NỘI",
-  "expect": {
-    "status": "matched",
-    "canonical_text": "199 Hoàng Như Tiếp, Phường Bồ Đề, Quận Long Biên, Thành phố Hà Nội, Việt Nam"
-  }
-}

@@ -1,0 +1,47 @@
+# Dockerignore file to reduce build context size
+
+# Git
+.git
+.gitignore
+
+# Docker
+docker-compose*.yml
+Dockerfile*
+
+# Documentation
+*.md
+docs/
+
+# Test files
+test/
+tests/
+*.test
+
+# Logs
+*.log
+logs/
+storage/logs/
+
+# Data files
+storage/
+docker/data/
+
+# Scripts
+*.sh
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Node modules if any
+node_modules/
+
+# Go build artifacts
+main
+address-parser
+worker
+api

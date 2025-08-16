@@ -1,6 +1,6 @@
-# Makefile cho Address Parser Service
+# Makefile cho Address Parser Service với libpostal support
 
-.PHONY: help build run test clean docker-build docker-run docker-stop
+.PHONY: help build run test clean docker-build docker-run docker-stop build-libpostal run-libpostal test-libpostal
 
 # Variables
 BINARY_NAME=address-parser
@@ -10,7 +10,9 @@ DOCKER_TAG=latest
 
 # Default target
 help:
-	@echo "Available commands:"
+	@echo "🚀 Address Parser - Available commands:"
+	@echo ""
+	@echo "Standard commands:"
 	@echo "  build        - Build the application"
 	@echo "  run          - Run the application locally"
 	@echo "  test         - Run tests"
@@ -18,6 +20,13 @@ help:
 	@echo "  docker-build - Build Docker image"
 	@echo "  docker-run   - Run with Docker Compose"
 	@echo "  docker-stop  - Stop Docker Compose services"
+	@echo ""
+	@echo "Libpostal commands:"
+	@echo "  build-libpostal - Build with libpostal support"
+	@echo "  run-libpostal   - Run with libpostal support"
+	@echo "  test-libpostal  - Test libpostal integration"
+	@echo "  logs-libpostal  - Show libpostal service logs"
+	@echo ""
 	@echo "  fmt          - Format Go code"
 	@echo "  lint         - Run linter"
 
@@ -104,6 +113,39 @@ go-sum:
 # Development mode with hot reload (requires air)
 dev:
 	@echo "Starting development mode with hot reload..."
+
+# Libpostal specific commands
+download-data:
+	@echo "📥 Downloading libpostal data..."
+	@./download-libpostal-data.sh
+
+build-libpostal:
+	@echo "🔨 Building with libpostal support..."
+	@make download-data
+	docker-compose build --no-cache
+
+run-libpostal:
+	@echo "🌟 Starting services with libpostal..."
+	@make download-data
+	docker-compose up -d
+	@echo "⏳ Waiting for services to initialize..."
+	@sleep 30
+	@make test-libpostal
+
+test-libpostal:
+	@echo "🧪 Testing libpostal integration..."
+	@./test-libpostal.sh
+
+logs-libpostal:
+	@docker-compose logs -f app
+
+stop-libpostal:
+	@echo "🛑 Stopping libpostal services..."
+	@docker-compose down
+
+clean-libpostal: stop-libpostal
+	@echo "🧹 Cleaning up libpostal containers..."
+	@docker-compose down -v --rmi all
 	air
 
 # Install development tools
