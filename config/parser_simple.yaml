@@ -1,0 +1,25 @@
+level_config: 4
+use_normalizer_v2: true
+use_libpostal: false
+jw_weight: 0.7
+lev_weight: 0.3
+meili:
+  topk_ward: 10
+  topk_district: 10
+  topk_province: 5
+thresholds:
+  high: 0.90
+  review_low: 0.60
+scoring:
+  weights:
+    ward: 0.35
+    district: 0.25
+    province: 0.15
+    structural_bonus: 0.10
+    roadcode_bonus: 0.07
+    poi_bonus: 0.05
+    libpostal_coverage: 0.03
+confidence:
+  score_weight: 0.60
+  completeness_weight: 0.25
+  path_weight: 0.15

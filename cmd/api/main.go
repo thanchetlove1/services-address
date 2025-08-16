@@ -22,7 +22,7 @@ import (
 
 func main() {
 	// Load configuration
-	if err := config.Load("config/parser.yaml"); err != nil {
+	if err := config.Load("./config/parser_simple.yaml"); err != nil {
 		panic(err)
 	}
 
@@ -44,7 +44,7 @@ func main() {
 	}()
 
 	// Initialize services
-	normalizerService := normalizer.NewTextNormalizer()
+	normalizerService := normalizer.NewTextNormalizerV2()
 	
 	// Initialize search components with Meilisearch
 	searchConfig := search.SearchConfig{

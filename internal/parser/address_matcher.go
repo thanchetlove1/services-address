@@ -58,7 +58,7 @@ const (
 
 type AddressMatcher struct {
 	searcher   *search.GazetteerSearcher
-	normalizer *normalizer.TextNormalizer
+	normalizer *normalizer.TextNormalizerV2
 	extractor  *normalizer.PatternExtractor
 	logger     *zap.Logger
 
@@ -67,7 +67,7 @@ type AddressMatcher struct {
 	maxCandidates   int
 }
 
-func NewAddressMatcher(searcher *search.GazetteerSearcher, textNormalizer *normalizer.TextNormalizer, logger *zap.Logger) *AddressMatcher {
+func NewAddressMatcher(searcher *search.GazetteerSearcher, textNormalizer *normalizer.TextNormalizerV2, logger *zap.Logger) *AddressMatcher {
 	thHigh := 0.90
 	thMed := 0.60
 	if config.C.Thresholds.High > 0 {
@@ -110,7 +110,8 @@ func (am *AddressMatcher) MatchAddress(rawAddress string, gazetteerVersion strin
 	start := time.Now()
 
 	// 1) Normalize + patterns
-	normalized, _ := am.normalizer.NormalizeAddress(rawAddress)
+	nr := am.normalizer.NormalizeAddress(rawAddress) // *NormalizationResult
+	normalized := nr.NormalizedNoDiacritics
 	patterns := am.extractor.ExtractPatterns(normalized)
 	sig := am.signalsFromPatterns(patterns)
 

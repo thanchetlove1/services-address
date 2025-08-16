@@ -10,7 +10,7 @@ import (
 type ScoringWeights struct {
 	Ward, District, Province       float64 `yaml:"ward" json:"ward"`
 	StructuralBonus, RoadcodeBonus float64 `yaml:"structural_bonus" json:"structural_bonus"`
-	PoiBonus, LibpostalCoverage    float64 `yaml:"poi_bonus" json:"poi_bonus"`
+	PoiBonus, LibpostalCoverage    float64 `yaml:"libpostal_coverage" json:"libpostal_coverage"`
 }
 
 type Thresholds struct {

@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"errors"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -18,7 +19,7 @@ import (
 // AddressService service xử lý logic parse địa chỉ
 type AddressService struct {
 	parser     *parser.AddressParser
-	normalizer *normalizer.TextNormalizer
+	normalizer *normalizer.TextNormalizerV2
 	searcher   *search.GazetteerSearcher
 	logger     *zap.Logger
 	startTime  time.Time
@@ -43,7 +44,7 @@ type JobStatus struct {
 }
 
 // NewAddressService tạo mới AddressService
-func NewAddressService(parser *parser.AddressParser, normalizer *normalizer.TextNormalizer, searcher *search.GazetteerSearcher, logger *zap.Logger) *AddressService {
+func NewAddressService(parser *parser.AddressParser, normalizer *normalizer.TextNormalizerV2, searcher *search.GazetteerSearcher, logger *zap.Logger) *AddressService {
 	return &AddressService{
 		parser:     parser,
 		normalizer: normalizer,
@@ -76,119 +77,20 @@ func (as *AddressService) ParseAddress(rawAddress string, options requests.Parse
 	return result, nil
 }
 
-// ParseSingle implements core parsing logic theo PROMPT HYBRID-FINAL 
+// ParseSingle implements core parsing logic theo CODE-V1.MD
 func (as *AddressService) ParseSingle(rawAddress string, options requests.ParseOptions) (*models.AddressResult, error) {
-	ctx := context.Background()
-	gazetteerVersion := "1.0.0" // TODO: get from config
-	
-	// Step 1: Normalize input
-	normalized, _ := as.normalizer.NormalizeAddress(rawAddress)
-	if normalized == "" {
-		return nil, errors.New("lỗi normalize địa chỉ")
+	if rawAddress == "" {
+		return nil, errors.New("địa chỉ không được để trống")
 	}
 	
-	// Step 2: Extract province keywords and search for candidates
-	provinceKeywords := as.extractProvinceKeywords(normalized)
-	as.logger.Info("Extracted province keywords", zap.Strings("keywords", provinceKeywords))
-	
-	// Search for province candidates using first keyword
-	var provCandidates []search.AdminUnitDoc
-	if len(provinceKeywords) > 0 {
-		var err error
-		provCandidates, err = as.searcher.SearchByLevel(ctx, provinceKeywords[0], 2, "", 10) // level 2 = province
-		if err != nil {
-			as.logger.Warn("Không tìm được province candidates", zap.Error(err))
-			return nil, err
-		}
+	// Lấy version từ env/config theo code-v1.md
+	gazetteerVersion := "sha256:dev"
+	if v := os.Getenv("GAZETTEER_VERSION"); v != "" {
+		gazetteerVersion = v
 	}
 	
-	as.logger.Info("Found province candidates", zap.Int("count", len(provCandidates)))
-	for _, cand := range provCandidates {
-		as.logger.Info("Province candidate", zap.String("name", cand.Name), zap.String("id", cand.AdminID))
-	}
-	
-	var bestResult *models.AddressResult
-	var bestScore float64 = 0.0
-	
-	// Step 3: Try each province candidate
-	for _, provCandidate := range provCandidates {
-		// Extract district keywords
-		districtKeywords := as.extractDistrictKeywords(normalized)
-		as.logger.Info("Extracted district keywords", zap.Strings("keywords", districtKeywords))
-		
-		// Search for districts in this province
-		var distCandidates []search.AdminUnitDoc
-		as.logger.Info("Searching for districts", 
-			zap.Strings("keywords", districtKeywords),
-			zap.String("province_id", provCandidate.AdminID))
-		
-		for _, keyword := range districtKeywords {
-			as.logger.Info("Searching district with keyword", zap.String("keyword", keyword))
-			candidates, err := as.searcher.SearchByLevel(ctx, keyword, 3, provCandidate.AdminID, 5) // level 3 = district
-			if err != nil {
-				as.logger.Warn("District search failed", zap.String("keyword", keyword), zap.Error(err))
-				continue
-			}
-			as.logger.Info("Found district candidates for keyword", 
-				zap.String("keyword", keyword), 
-				zap.Int("count", len(candidates)))
-			distCandidates = append(distCandidates, candidates...)
-		}
-		
-		as.logger.Info("Found district candidates", zap.Int("count", len(distCandidates)))
-		
-		if len(distCandidates) == 0 {
-			continue
-		}
-		
-		for _, distCandidate := range distCandidates {
-			// Extract ward keywords
-			wardKeywords := as.extractWardKeywords(normalized)
-			as.logger.Info("Extracted ward keywords", zap.Strings("keywords", wardKeywords))
-			
-			// Search for wards in this district
-			var wardCandidates []search.AdminUnitDoc
-			for _, keyword := range wardKeywords {
-				candidates, err := as.searcher.SearchByLevel(ctx, keyword, 4, distCandidate.AdminID, 5) // level 4 = ward
-				if err != nil {
-					continue
-				}
-				wardCandidates = append(wardCandidates, candidates...)
-			}
-			
-			as.logger.Info("Found ward candidates", zap.Int("count", len(wardCandidates)))
-			
-			if len(wardCandidates) > 0 {
-				// Build result with ward (perfect match)
-				for _, wardCandidate := range wardCandidates {
-					result := as.buildAddressResult(rawAddress, normalized, provCandidate, distCandidate, &wardCandidate, gazetteerVersion)
-					result.Confidence = 1.0
-					result.Status = models.StatusMatched
-					return result, nil
-				}
-			} else {
-				// Build result without ward (district-level match)
-				result := as.buildAddressResult(rawAddress, normalized, provCandidate, distCandidate, nil, gazetteerVersion)
-				result.Confidence = 0.8
-				result.Status = models.StatusAmbiguous
-				if bestScore < 0.8 {
-					bestScore = 0.8
-					bestResult = result
-				}
-			}
-		}
-	}
-	
-	// Return best result or fallback
-	if bestResult != nil {
-		return bestResult, nil
-	}
-	
-	// No matches found - return fallback result
-	result := as.buildAddressResult(rawAddress, normalized, search.AdminUnitDoc{}, search.AdminUnitDoc{}, nil, gazetteerVersion)
-	result.Status = models.StatusNeedsReview
-	result.Confidence = 0.0
-	return result, nil
+	// Dùng AddressParser (đã wrap AddressMatcher) theo code-v1.md
+	return as.parser.ParseAddress(rawAddress, gazetteerVersion)
 }
 
 // buildAddressResult builds a complete AddressResult from components
@@ -550,6 +452,16 @@ func (as *AddressService) extractDistrictKeywords(normalized string) []string {
 				cityName := strings.Join(remaining[:endIdx], " ")
 				keywords = append(keywords, cityName)
 			}
+		}
+	}
+	
+	// Handle "quan_1", "quan_2" patterns (Quận 1, Quận 2)
+	for _, word := range words {
+		if strings.HasPrefix(word, "quan_") && len(word) > 5 {
+			// "quan_1" -> "1", "quan 1"
+			num := word[5:]
+			keywords = append(keywords, num)
+			keywords = append(keywords, "quan "+num)
 		}
 	}
 	
